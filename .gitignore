@@ -1,0 +1,7 @@
+/target
+.ignore
+CLAUDE.md
+.claude/
+.DS_STORE
+/.caliber/
+test/.tmp/
