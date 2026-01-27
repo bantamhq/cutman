@@ -1,14 +1,17 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{Router, routing::get};
 use tower_http::trace::TraceLayer;
 
 use super::admin::admin_router;
+use super::git::git_router;
 use super::user::user_router;
 use crate::store::Store;
 
 pub struct AppState {
     pub store: Arc<dyn Store>,
+    pub data_dir: PathBuf,
 }
 
 async fn health() -> &'static str {
@@ -20,6 +23,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health))
         .nest("/api/v1/admin", admin_router())
         .nest("/api/v1", user_router())
+        .nest("/git", git_router())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

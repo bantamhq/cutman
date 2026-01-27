@@ -71,7 +71,9 @@ pub async fn create_folder(
         created_at: Utc::now(),
     };
 
-    store.create_folder(&folder).api_err("Failed to create folder")?;
+    store
+        .create_folder(&folder)
+        .api_err("Failed to create folder")?;
 
     Ok::<_, ApiError>((StatusCode::CREATED, Json(ApiResponse::success(folder))))
 }
@@ -89,7 +91,12 @@ pub async fn get_folder(
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
-    require_namespace_permission(store, user, &folder.namespace_id, Permission::NAMESPACE_READ)?;
+    require_namespace_permission(
+        store,
+        user,
+        &folder.namespace_id,
+        Permission::NAMESPACE_READ,
+    )?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(folder)))
 }
@@ -108,7 +115,12 @@ pub async fn update_folder(
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
-    require_namespace_permission(store, user, &folder.namespace_id, Permission::NAMESPACE_WRITE)?;
+    require_namespace_permission(
+        store,
+        user,
+        &folder.namespace_id,
+        Permission::NAMESPACE_WRITE,
+    )?;
 
     if let Some(name) = req.name {
         if name != folder.name
@@ -125,7 +137,9 @@ pub async fn update_folder(
         folder.color = Some(color);
     }
 
-    store.update_folder(&folder).api_err("Failed to update folder")?;
+    store
+        .update_folder(&folder)
+        .api_err("Failed to update folder")?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(folder)))
 }
@@ -144,9 +158,16 @@ pub async fn delete_folder(
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
-    require_namespace_permission(store, user, &folder.namespace_id, Permission::NAMESPACE_ADMIN)?;
+    require_namespace_permission(
+        store,
+        user,
+        &folder.namespace_id,
+        Permission::NAMESPACE_ADMIN,
+    )?;
 
-    let repo_count = store.count_folder_repos(&folder.id).api_err("Failed to count folder repos")?;
+    let repo_count = store
+        .count_folder_repos(&folder.id)
+        .api_err("Failed to count folder repos")?;
 
     if repo_count > 0 && params.force != Some(true) {
         return Err(ApiError::conflict(
@@ -154,7 +175,9 @@ pub async fn delete_folder(
         ));
     }
 
-    store.delete_folder(&folder.id).api_err("Failed to delete folder")?;
+    store
+        .delete_folder(&folder.id)
+        .api_err("Failed to delete folder")?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
 }

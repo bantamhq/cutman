@@ -51,7 +51,9 @@ pub async fn list_repo_folders(
 
     require_repo_permission(store, user, &repo, Permission::REPO_READ)?;
 
-    let folders = store.list_repo_folders(&repo.id).api_err("Failed to list repo folders")?;
+    let folders = store
+        .list_repo_folders(&repo.id)
+        .api_err("Failed to list repo folders")?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
 }
@@ -74,10 +76,14 @@ pub async fn add_repo_folders(
     validate_folders_for_repo(store, &repo, &req.folder_ids)?;
 
     for folder_id in &req.folder_ids {
-        store.add_repo_folder(&repo.id, folder_id).api_err("Failed to add repo folder")?;
+        store
+            .add_repo_folder(&repo.id, folder_id)
+            .api_err("Failed to add repo folder")?;
     }
 
-    let folders = store.list_repo_folders(&repo.id).api_err("Failed to list repo folders")?;
+    let folders = store
+        .list_repo_folders(&repo.id)
+        .api_err("Failed to list repo folders")?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
 }
@@ -99,9 +105,13 @@ pub async fn set_repo_folders(
     require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
     validate_folders_for_repo(store, &repo, &req.folder_ids)?;
 
-    store.set_repo_folders(&repo.id, &req.folder_ids).api_err("Failed to set repo folders")?;
+    store
+        .set_repo_folders(&repo.id, &req.folder_ids)
+        .api_err("Failed to set repo folders")?;
 
-    let folders = store.list_repo_folders(&repo.id).api_err("Failed to list repo folders")?;
+    let folders = store
+        .list_repo_folders(&repo.id)
+        .api_err("Failed to list repo folders")?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
 }
@@ -126,7 +136,9 @@ pub async fn remove_repo_folder(
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
-    store.remove_repo_folder(&repo.id, &folder_id).api_err("Failed to remove repo folder")?;
+    store
+        .remove_repo_folder(&repo.id, &folder_id)
+        .api_err("Failed to remove repo folder")?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
 }

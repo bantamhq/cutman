@@ -19,7 +19,12 @@ pub fn check_namespace_permission(
         .api_err("Failed to check namespace grant")?;
 
     Ok(grant
-        .map(|g| g.allow_bits.expand_implied().difference(g.deny_bits).has(required))
+        .map(|g| {
+            g.allow_bits
+                .expand_implied()
+                .difference(g.deny_bits)
+                .has(required)
+        })
         .unwrap_or(false))
 }
 

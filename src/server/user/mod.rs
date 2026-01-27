@@ -1,4 +1,4 @@
-mod access;
+pub mod access;
 mod folders;
 mod namespaces;
 mod repo_folders;

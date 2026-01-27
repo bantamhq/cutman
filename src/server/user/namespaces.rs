@@ -37,7 +37,10 @@ pub async fn list_namespaces(
         if grant.namespace_id == user.primary_namespace_id {
             continue;
         }
-        if let Some(ns) = store.get_namespace(&grant.namespace_id).api_err("Failed to get namespace")? {
+        if let Some(ns) = store
+            .get_namespace(&grant.namespace_id)
+            .api_err("Failed to get namespace")?
+        {
             namespaces.push(ns);
         }
     }
@@ -47,9 +50,15 @@ pub async fn list_namespaces(
         .api_err("Failed to list repo grants")?;
 
     for grant in repo_grants {
-        if let Some(repo) = store.get_repo_by_id(&grant.repo_id).api_err("Failed to get repo")? {
+        if let Some(repo) = store
+            .get_repo_by_id(&grant.repo_id)
+            .api_err("Failed to get repo")?
+        {
             if !namespaces.iter().any(|ns| ns.id == repo.namespace_id) {
-                if let Some(ns) = store.get_namespace(&repo.namespace_id).api_err("Failed to get namespace")? {
+                if let Some(ns) = store
+                    .get_namespace(&repo.namespace_id)
+                    .api_err("Failed to get namespace")?
+                {
                     namespaces.push(ns);
                 }
             }
@@ -82,7 +91,9 @@ pub async fn update_namespace(
         ns.storage_limit_bytes = Some(limit);
     }
 
-    store.update_namespace(&ns).api_err("Failed to update namespace")?;
+    store
+        .update_namespace(&ns)
+        .api_err("Failed to update namespace")?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(ns)))
 }
@@ -106,7 +117,9 @@ pub async fn delete_namespace(
 
     require_namespace_permission(store, user, &ns.id, Permission::NAMESPACE_ADMIN)?;
 
-    store.delete_namespace(&ns.id).api_err("Failed to delete namespace")?;
+    store
+        .delete_namespace(&ns.id)
+        .api_err("Failed to delete namespace")?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
 }

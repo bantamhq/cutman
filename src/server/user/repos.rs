@@ -36,9 +36,13 @@ pub async fn list_repos(
         let ns_id = resolve_namespace_id(store, user, Some(ns_name))?;
 
         if check_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_READ)? {
-            store.list_repos(&ns_id, cursor, DEFAULT_PAGE_SIZE + 1).api_err("Failed to list repos")?
+            store
+                .list_repos(&ns_id, cursor, DEFAULT_PAGE_SIZE + 1)
+                .api_err("Failed to list repos")?
         } else {
-            store.list_user_repos_with_grants(&user.id, &ns_id).api_err("Failed to list repos")?
+            store
+                .list_user_repos_with_grants(&user.id, &ns_id)
+                .api_err("Failed to list repos")?
         }
     } else {
         let mut all_repos = Vec::new();
@@ -57,7 +61,10 @@ pub async fn list_repos(
                 continue;
             }
 
-            let effective = grant.allow_bits.expand_implied().difference(grant.deny_bits);
+            let effective = grant
+                .allow_bits
+                .expand_implied()
+                .difference(grant.deny_bits);
             if effective.has(Permission::NAMESPACE_READ) {
                 let repos = store
                     .list_repos(&grant.namespace_id, cursor, DEFAULT_PAGE_SIZE + 1)
@@ -66,10 +73,15 @@ pub async fn list_repos(
             }
         }
 
-        let repo_grants = store.list_user_repo_grants(&user.id).api_err("Failed to list repo grants")?;
+        let repo_grants = store
+            .list_user_repo_grants(&user.id)
+            .api_err("Failed to list repo grants")?;
 
         for grant in repo_grants {
-            if let Some(repo) = store.get_repo_by_id(&grant.repo_id).api_err("Failed to get repo")? {
+            if let Some(repo) = store
+                .get_repo_by_id(&grant.repo_id)
+                .api_err("Failed to get repo")?
+            {
                 if !all_repos.iter().any(|r| r.id == repo.id) {
                     all_repos.push(repo);
                 }
@@ -97,7 +109,11 @@ pub async fn create_repo(
 
     require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_WRITE)?;
 
-    if store.get_repo(&ns_id, &req.name).api_err("Failed to check repo")?.is_some() {
+    if store
+        .get_repo(&ns_id, &req.name)
+        .api_err("Failed to check repo")?
+        .is_some()
+    {
         return Err(ApiError::conflict("Repository already exists"));
     }
 
@@ -191,7 +207,9 @@ pub async fn delete_repo(
 
     require_repo_permission(store, user, &repo, Permission::REPO_ADMIN)?;
 
-    store.delete_repo(&repo.id).api_err("Failed to delete repo")?;
+    store
+        .delete_repo(&repo.id)
+        .api_err("Failed to delete repo")?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
 }

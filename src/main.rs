@@ -93,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
 
             let state = Arc::new(AppState {
                 store: Arc::new(store),
+                data_dir: config.data_dir.clone(),
             });
 
             let app = create_router(state);
