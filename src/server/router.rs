@@ -13,6 +13,8 @@ use crate::store::Store;
 pub struct AppState {
     pub store: Arc<dyn Store>,
     pub data_dir: PathBuf,
+    /// Public base URL for external access. Used for LFS action URLs.
+    pub public_base_url: Option<String>,
 }
 
 async fn health() -> &'static str {

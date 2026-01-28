@@ -62,7 +62,7 @@ HTTP 409
 [Asserts]
 jsonpath "$.error" contains "already exists"
 
-# Create repo - with empty name (API allows this)
+# Create repo - validation error (empty name)
 POST {{base_url}}/api/v1/repos
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
@@ -70,9 +70,21 @@ Content-Type: application/json
     "name": "",
     "namespace": "{{user_ns_name}}"
 }
-HTTP 201
-[Captures]
-empty_name_repo_id: jsonpath "$.data.id"
+HTTP 400
+[Asserts]
+jsonpath "$.error" contains "empty"
+
+# Create repo - validation error (invalid characters)
+POST {{base_url}}/api/v1/repos
+Authorization: Bearer {{user_token}}
+Content-Type: application/json
+{
+    "name": "Invalid Repo Name!",
+    "namespace": "{{user_ns_name}}"
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error" isString
 
 # Update repo - success
 PATCH {{base_url}}/api/v1/repos/{{new_repo_id}}
@@ -107,11 +119,6 @@ HTTP 204
 DELETE {{base_url}}/api/v1/repos/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{user_token}}
 HTTP 404
-
-# Clean up empty name repo
-DELETE {{base_url}}/api/v1/repos/{{empty_name_repo_id}}
-Authorization: Bearer {{user_token}}
-HTTP 204
 
 # Repos - unauthorized (no token)
 GET {{base_url}}/api/v1/repos

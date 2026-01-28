@@ -107,6 +107,14 @@ impl ApiError {
             message: message.into(),
         }
     }
+
+    #[must_use]
+    pub fn payload_too_large(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::PAYLOAD_TOO_LARGE,
+            message: message.into(),
+        }
+    }
 }
 
 impl IntoResponse for ApiError {

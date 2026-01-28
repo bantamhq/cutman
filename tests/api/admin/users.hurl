@@ -49,16 +49,16 @@ HTTP 409
 [Asserts]
 jsonpath "$.error" contains "already exists"
 
-# Create user - with empty namespace name (API allows this)
+# Create user - validation error (empty namespace name)
 POST {{base_url}}/api/v1/admin/users
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
     "namespace_name": ""
 }
-HTTP 201
-[Captures]
-empty_name_user_id: jsonpath "$.data.id"
+HTTP 400
+[Asserts]
+jsonpath "$.error" contains "empty"
 
 # List user tokens - success
 GET {{base_url}}/api/v1/admin/users/{{user_id}}/tokens
@@ -113,8 +113,3 @@ HTTP 204
 DELETE {{base_url}}/api/v1/admin/users/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{admin_token}}
 HTTP 404
-
-# Clean up empty name user
-DELETE {{base_url}}/api/v1/admin/users/{{empty_name_user_id}}
-Authorization: Bearer {{admin_token}}
-HTTP 204

@@ -17,6 +17,7 @@ use crate::server::dto::{
 use crate::server::response::{
     ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, paginate,
 };
+use crate::server::validation::validate_namespace_name;
 use crate::types::{Namespace, NamespaceGrant, Permission, Token, User};
 
 use super::tokens::token_to_response;
@@ -26,6 +27,10 @@ pub async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateUserRequest>,
 ) -> impl IntoResponse {
+    if let Err(e) = validate_namespace_name(&req.namespace_name) {
+        return Err(ApiError::bad_request(e));
+    }
+
     let ns = match state.store.get_namespace_by_name(&req.namespace_name) {
         Ok(Some(ns)) => ns,
         Ok(None) => {

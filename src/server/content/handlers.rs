@@ -1,6 +1,9 @@
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::process::Command;
 
 use axum::{
     Json,
@@ -23,9 +26,11 @@ use super::auth::{OptionalAuth, check_content_access};
 use super::dto::{
     ArchiveParams, BlameLineResponse, BlameResponse, BlobParams, BlobResponse, CompareParams,
     CompareResponse, DEFAULT_PAGE_SIZE, DEFAULT_TREE_DEPTH, DiffResponse, ListCommitsParams,
-    MAX_BLOB_SIZE, MAX_PAGE_SIZE, MAX_TREE_DEPTH, ReadmeParams, ReadmeResponse, RefResponse,
-    TreeEntryResponse, TreeParams,
+    MAX_BLOB_SIZE, MAX_PAGE_SIZE, MAX_RAW_BLOB_SIZE, MAX_TREE_DEPTH, ReadmeParams, ReadmeResponse,
+    RefResponse, TreeEntryResponse, TreeParams,
 };
+
+const ARCHIVE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 use super::git_ops::{
     GitError, build_diff, commit_to_response, compute_commit_stats, count_ahead_behind,
     entry_type_str, find_merge_base, get_blob_at_path, get_commit, get_default_branch, get_tree,
@@ -531,6 +536,14 @@ pub async fn get_blob(
 }
 
 fn serve_raw_blob(blob: &git2::Blob<'_>, filename: &str) -> Result<Response, ApiError> {
+    let size = blob.size() as i64;
+    if size > MAX_RAW_BLOB_SIZE {
+        return Err(ApiError::payload_too_large(format!(
+            "File size ({} bytes) exceeds maximum allowed size ({} bytes)",
+            size, MAX_RAW_BLOB_SIZE
+        )));
+    }
+
     let content_type = detect_content_type(filename, blob.content());
     let content = blob.content().to_vec();
 
@@ -673,12 +686,17 @@ pub async fn get_archive(
         args.push(path.trim_start_matches('/').to_string());
     }
 
-    let output = Command::new("git")
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| ApiError::internal(format!("Failed to run git archive: {e}")))?;
+    let output = tokio::time::timeout(
+        ARCHIVE_TIMEOUT,
+        Command::new("git")
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output(),
+    )
+    .await
+    .map_err(|_| ApiError::internal("git archive timed out"))?
+    .map_err(|e| ApiError::internal(format!("Failed to run git archive: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -699,10 +717,25 @@ pub async fn get_archive(
 
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")).unwrap(),
-    );
+
+    let safe_filename: String = filename
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .collect();
+    let safe_filename = if safe_filename.is_empty() {
+        "archive".to_string()
+    } else {
+        safe_filename
+    };
+
+    if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{safe_filename}\"")) {
+        headers.insert(header::CONTENT_DISPOSITION, value);
+    } else {
+        headers.insert(
+            header::CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=\"archive\""),
+        );
+    }
 
     Ok((StatusCode::OK, headers, body).into_response())
 }

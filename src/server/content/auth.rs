@@ -6,10 +6,9 @@ use axum::{
     http::{StatusCode, header::AUTHORIZATION, request::Parts},
     response::{IntoResponse, Response},
 };
-use chrono::Utc;
 use serde_json::json;
 
-use crate::auth::{TokenGenerator, parse_token};
+use crate::auth::{TokenValidationError, extract_token_from_header, validate_token};
 use crate::server::AppState;
 use crate::server::response::ApiError;
 use crate::server::user::access::check_repo_permission;
@@ -70,85 +69,36 @@ impl FromRequestParts<Arc<AppState>> for OptionalAuth {
             .get(AUTHORIZATION)
             .and_then(|h| h.to_str().ok());
 
-        let raw_token = match auth_header {
-            Some(header) if header.starts_with("Bearer ") => {
-                header.strip_prefix("Bearer ").unwrap().to_string()
-            }
-            Some(header) if header.starts_with("Basic ") => extract_basic_auth_token(header)?,
-            Some(_) => return Err(OptionalAuthError::InvalidScheme),
-            None => {
+        let raw_token = match extract_token_from_header(auth_header) {
+            Ok(Some(token)) => token,
+            Ok(None) => {
                 return Ok(OptionalAuth {
                     user: None,
                     token: None,
                 });
             }
-        };
-
-        let (lookup, _secret) =
-            parse_token(&raw_token).map_err(|_| OptionalAuthError::InvalidToken)?;
-
-        let token = state
-            .store
-            .get_token_by_lookup(&lookup)
-            .map_err(|_| OptionalAuthError::InternalError)?
-            .ok_or(OptionalAuthError::InvalidToken)?;
-
-        let generator = TokenGenerator::new();
-        if !generator
-            .verify(&raw_token, &token.token_hash)
-            .map_err(|_| OptionalAuthError::InternalError)?
-        {
-            return Err(OptionalAuthError::InvalidToken);
-        }
-
-        if let Some(expires_at) = &token.expires_at {
-            if expires_at < &Utc::now() {
-                return Err(OptionalAuthError::TokenExpired);
+            Err(e) => {
+                return Err(match e {
+                    TokenValidationError::InvalidScheme => OptionalAuthError::InvalidScheme,
+                    TokenValidationError::InvalidToken => OptionalAuthError::InvalidToken,
+                    _ => OptionalAuthError::InternalError,
+                });
             }
-        }
-
-        if token.is_admin {
-            return Err(OptionalAuthError::AdminTokenNotAllowed);
-        }
-
-        let user = match &token.user_id {
-            Some(user_id) => state
-                .store
-                .get_user(user_id)
-                .map_err(|_| OptionalAuthError::InternalError)?,
-            None => None,
         };
 
-        let _ = state.store.update_token_last_used(&token.id);
+        let validated = validate_token(state, &raw_token, false).map_err(|e| match e {
+            TokenValidationError::InvalidScheme => OptionalAuthError::InvalidScheme,
+            TokenValidationError::InvalidToken => OptionalAuthError::InvalidToken,
+            TokenValidationError::TokenExpired => OptionalAuthError::TokenExpired,
+            TokenValidationError::AdminTokenNotAllowed => OptionalAuthError::AdminTokenNotAllowed,
+            TokenValidationError::InternalError => OptionalAuthError::InternalError,
+        })?;
 
         Ok(OptionalAuth {
-            user,
-            token: Some(token),
+            user: validated.user,
+            token: Some(validated.token),
         })
     }
-}
-
-fn extract_basic_auth_token(header: &str) -> Result<String, OptionalAuthError> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD;
-
-    let encoded = header
-        .strip_prefix("Basic ")
-        .ok_or(OptionalAuthError::InvalidScheme)?;
-    let decoded = STANDARD
-        .decode(encoded)
-        .map_err(|_| OptionalAuthError::InvalidToken)?;
-    let credentials = String::from_utf8(decoded).map_err(|_| OptionalAuthError::InvalidToken)?;
-
-    let (username, password) = credentials
-        .split_once(':')
-        .ok_or(OptionalAuthError::InvalidToken)?;
-
-    if username != "x-token" {
-        return Err(OptionalAuthError::InvalidToken);
-    }
-
-    Ok(password.to_string())
 }
 
 pub fn check_content_access(

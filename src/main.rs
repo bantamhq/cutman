@@ -36,6 +36,11 @@ enum Commands {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
+
+        /// Public base URL for external access (e.g., "https://git.example.com").
+        /// Used for generating LFS action URLs. If not set, URLs are derived from request headers.
+        #[arg(long)]
+        public_base_url: Option<String>,
     },
 }
 
@@ -52,11 +57,13 @@ async fn main() -> anyhow::Result<()> {
             host,
             port,
             data_dir,
+            public_base_url,
         } => {
             let config = ServerConfig {
                 host,
                 port,
                 data_dir: data_dir.into(),
+                public_base_url,
             };
 
             fs::create_dir_all(&config.data_dir)?;
@@ -84,6 +91,15 @@ async fn main() -> anyhow::Result<()> {
                 store.create_token(&token)?;
                 fs::write(&token_file, &raw_token)?;
 
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Err(e) = fs::set_permissions(&token_file, fs::Permissions::from_mode(0o600))
+                    {
+                        tracing::warn!("Failed to set permissions on admin token file: {e}");
+                    }
+                }
+
                 println!();
                 println!("========================================");
                 println!("Initial admin token (save this, it won't be shown again):");
@@ -100,10 +116,11 @@ async fn main() -> anyhow::Result<()> {
             let state = Arc::new(AppState {
                 store: Arc::new(store),
                 data_dir: config.data_dir.clone(),
+                public_base_url: config.public_base_url.clone(),
             });
 
             let app = create_router(state);
-            let addr = config.socket_addr();
+            let addr = config.socket_addr()?;
 
             info!("Starting server on {}", addr);
 

@@ -16,6 +16,7 @@ use crate::server::response::{
     ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, StoreOptionExt, StoreResultExt,
     paginate,
 };
+use crate::server::validation::validate_repo_name;
 use crate::types::{Permission, Repo};
 
 use super::access::{
@@ -105,6 +106,9 @@ pub async fn create_repo(
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
+
+    validate_repo_name(&req.name)?;
+
     let ns_id = resolve_namespace_id(store, user, req.namespace.as_deref())?;
 
     require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_WRITE)?;

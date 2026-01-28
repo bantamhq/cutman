@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use axum::http::HeaderMap;
-use chrono::Utc;
 
-use crate::auth::{TokenGenerator, parse_token};
+use crate::auth::{TokenValidationError, extract_token_from_header, validate_token};
 use crate::server::AppState;
 use crate::server::user::access::{check_namespace_permission, check_repo_permission};
 use crate::types::{Namespace, Permission, Repo, Token, User};
@@ -71,63 +70,29 @@ pub async fn extract_git_auth(
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
 
-    let raw_token = match auth_header {
-        Some(header) if header.starts_with("Basic ") => {
-            extract_basic_auth_token(header).ok_or(GitAuthError::InvalidCredentials)?
-        }
-        Some(header) if header.starts_with("Bearer ") => header
-            .strip_prefix("Bearer ")
-            .ok_or(GitAuthError::InvalidCredentials)?
-            .to_string(),
-        Some(_) => return Err(GitAuthError::InvalidCredentials),
-        None => {
+    let raw_token = match extract_token_from_header(auth_header) {
+        Ok(Some(token)) => token,
+        Ok(None) => {
             return Ok(GitAuth {
                 user: None,
                 token: None,
             });
         }
+        Err(_) => return Err(GitAuthError::InvalidCredentials),
     };
 
-    let (lookup, _secret) =
-        parse_token(&raw_token).map_err(|_| GitAuthError::InvalidCredentials)?;
-
-    let token = state
-        .store
-        .get_token_by_lookup(&lookup)
-        .map_err(|_| GitAuthError::InternalError)?
-        .ok_or(GitAuthError::InvalidCredentials)?;
-
-    let generator = TokenGenerator::new();
-    if !generator
-        .verify(&raw_token, &token.token_hash)
-        .map_err(|_| GitAuthError::InternalError)?
-    {
-        return Err(GitAuthError::InvalidCredentials);
-    }
-
-    if let Some(expires_at) = &token.expires_at {
-        if expires_at < &Utc::now() {
-            return Err(GitAuthError::TokenExpired);
+    let validated = validate_token(state, &raw_token, false).map_err(|e| match e {
+        TokenValidationError::InvalidScheme | TokenValidationError::InvalidToken => {
+            GitAuthError::InvalidCredentials
         }
-    }
-
-    if token.is_admin {
-        return Err(GitAuthError::AdminTokenNotAllowed);
-    }
-
-    let user = match &token.user_id {
-        Some(user_id) => state
-            .store
-            .get_user(user_id)
-            .map_err(|_| GitAuthError::InternalError)?,
-        None => None,
-    };
-
-    let _ = state.store.update_token_last_used(&token.id);
+        TokenValidationError::TokenExpired => GitAuthError::TokenExpired,
+        TokenValidationError::AdminTokenNotAllowed => GitAuthError::AdminTokenNotAllowed,
+        TokenValidationError::InternalError => GitAuthError::InternalError,
+    })?;
 
     Ok(GitAuth {
-        user,
-        token: Some(token),
+        user: validated.user,
+        token: Some(validated.token),
     })
 }
 
@@ -195,21 +160,4 @@ fn check_read_access(
     }
 
     Ok(())
-}
-
-fn extract_basic_auth_token(header: &str) -> Option<String> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD;
-
-    let encoded = header.strip_prefix("Basic ")?;
-    let decoded = STANDARD.decode(encoded).ok()?;
-    let credentials = String::from_utf8(decoded).ok()?;
-
-    let (username, password) = credentials.split_once(':')?;
-
-    if username != "x-token" {
-        return None;
-    }
-
-    Some(password.to_string())
 }

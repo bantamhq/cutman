@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_BLOB_SIZE: i64 = 1_048_576;
+pub const MAX_RAW_BLOB_SIZE: i64 = 100_000_000; // 100MB limit for raw blob downloads
 pub const MAX_TREE_DEPTH: i32 = 10;
 pub const DEFAULT_TREE_DEPTH: i32 = 1;
 pub const DEFAULT_PAGE_SIZE: i32 = 20;

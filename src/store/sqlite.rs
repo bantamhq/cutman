@@ -37,7 +37,10 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
             // Handle SQLite's default datetime format: "YYYY-MM-DD HH:MM:SS"
             chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").map(|ndt| ndt.and_utc())
         })
-        .unwrap_or_else(|_| Utc::now())
+        .unwrap_or_else(|e| {
+            tracing::error!("Invalid datetime in database: '{}' - {}", s, e);
+            Utc::now()
+        })
 }
 
 fn format_datetime(dt: &DateTime<Utc>) -> String {

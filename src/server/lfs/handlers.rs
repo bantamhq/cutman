@@ -50,12 +50,21 @@ struct LfsContext {
 
 #[must_use]
 fn lfs_json_response<T: serde::Serialize>(status: StatusCode, body: &T) -> Response {
-    let json = serde_json::to_vec(body).unwrap_or_default();
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, LFS_MEDIA_TYPE)
-        .body(Body::from(json))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    match serde_json::to_vec(body) {
+        Ok(json) => Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, LFS_MEDIA_TYPE)
+            .body(Body::from(json))
+            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+        Err(e) => {
+            warn!("Failed to serialize LFS response: {e}");
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header(header::CONTENT_TYPE, LFS_MEDIA_TYPE)
+                .body(Body::from(r#"{"message":"Internal server error"}"#))
+                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
 }
 
 #[must_use]
@@ -127,7 +136,12 @@ fn build_verify_url(host: &str, namespace: &str, repo: &str) -> String {
 }
 
 #[must_use]
-fn get_host_from_headers(headers: &HeaderMap) -> String {
+fn get_base_url(state: &AppState, headers: &HeaderMap) -> String {
+    // Use configured public_base_url if available, otherwise derive from headers
+    if let Some(ref base_url) = state.public_base_url {
+        return base_url.trim_end_matches('/').to_string();
+    }
+
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
@@ -178,7 +192,7 @@ pub async fn batch(
     }
 
     let storage = LfsStorage::new(&state.data_dir);
-    let host = get_host_from_headers(&headers);
+    let host = get_base_url(&state, &headers);
     let batch_ctx = BatchContext {
         state: &state,
         storage: &storage,
