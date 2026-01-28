@@ -37,7 +37,11 @@ pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
 }
 
 pub fn resolve_ref(repo: &Repository, ref_spec: &str) -> Result<Oid, GitError> {
-    let ref_spec = if ref_spec.is_empty() { "HEAD" } else { ref_spec };
+    let ref_spec = if ref_spec.is_empty() {
+        "HEAD"
+    } else {
+        ref_spec
+    };
 
     if ref_spec.len() == 40 {
         if let Ok(oid) = Oid::from_str(ref_spec) {
@@ -107,8 +111,7 @@ pub fn get_tree_at_path<'a>(
         .to_object(repo)
         .map_err(|e| GitError::Internal(format!("Failed to get tree object: {e}")))?;
 
-    obj.into_tree()
-        .map_err(|_| GitError::NotADirectory)
+    obj.into_tree().map_err(|_| GitError::NotADirectory)
 }
 
 pub fn get_blob_at_path<'a>(
@@ -142,10 +145,7 @@ pub fn is_binary(content: &[u8]) -> bool {
 pub fn signature_to_response(sig: &Signature<'_>) -> SignatureResponse {
     let timestamp = sig.when();
     let secs = timestamp.seconds();
-    let date = Utc
-        .timestamp_opt(secs, 0)
-        .single()
-        .unwrap_or_else(Utc::now);
+    let date = Utc.timestamp_opt(secs, 0).single().unwrap_or_else(Utc::now);
 
     SignatureResponse {
         name: sig.name().unwrap_or("").to_string(),

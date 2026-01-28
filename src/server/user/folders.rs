@@ -12,7 +12,9 @@ use uuid::Uuid;
 
 use crate::auth::RequireUser;
 use crate::server::AppState;
-use crate::server::dto::{CreateFolderRequest, DeleteFolderParams, ListFoldersParams, UpdateFolderRequest};
+use crate::server::dto::{
+    CreateFolderRequest, DeleteFolderParams, ListFoldersParams, UpdateFolderRequest,
+};
 use crate::server::response::{
     ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, StoreOptionExt, StoreResultExt,
     paginate,
@@ -41,7 +43,12 @@ pub async fn list_folders(
     require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_READ)?;
 
     let folders = store
-        .list_folders(&ns_id, params.parent_id.as_deref(), cursor, DEFAULT_PAGE_SIZE + 1)
+        .list_folders(
+            &ns_id,
+            params.parent_id.as_deref(),
+            cursor,
+            DEFAULT_PAGE_SIZE + 1,
+        )
         .api_err("Failed to list folders")?;
 
     let (folders, next_cursor, has_more) =
@@ -169,9 +176,7 @@ pub async fn update_folder(
             .list_folder_ancestors(parent_id)
             .api_err("Failed to check for cycles")?;
         if ancestors.iter().any(|a| a.id == folder.id) {
-            return Err(ApiError::bad_request(
-                "Moving folder would create a cycle",
-            ));
+            return Err(ApiError::bad_request("Moving folder would create a cycle"));
         }
     }
 
@@ -184,7 +189,9 @@ pub async fn update_folder(
                 .api_err("Failed to check folder name")?
                 .is_some()
         {
-            return Err(ApiError::conflict("Folder name already exists in this location"));
+            return Err(ApiError::conflict(
+                "Folder name already exists in this location",
+            ));
         }
         folder.name = name;
     }

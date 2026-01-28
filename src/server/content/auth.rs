@@ -36,9 +36,10 @@ impl IntoResponse for OptionalAuthError {
             Self::InvalidScheme => (StatusCode::UNAUTHORIZED, "Invalid authorization scheme"),
             Self::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
             Self::TokenExpired => (StatusCode::UNAUTHORIZED, "Token expired"),
-            Self::AdminTokenNotAllowed => {
-                (StatusCode::FORBIDDEN, "Admin token cannot be used for this operation")
-            }
+            Self::AdminTokenNotAllowed => (
+                StatusCode::FORBIDDEN,
+                "Admin token cannot be used for this operation",
+            ),
             Self::InternalError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
         };
 
@@ -73,9 +74,7 @@ impl FromRequestParts<Arc<AppState>> for OptionalAuth {
             Some(header) if header.starts_with("Bearer ") => {
                 header.strip_prefix("Bearer ").unwrap().to_string()
             }
-            Some(header) if header.starts_with("Basic ") => {
-                extract_basic_auth_token(header)?
-            }
+            Some(header) if header.starts_with("Basic ") => extract_basic_auth_token(header)?,
             Some(_) => return Err(OptionalAuthError::InvalidScheme),
             None => {
                 return Ok(OptionalAuth {
@@ -161,9 +160,10 @@ pub fn check_content_access(
         return Ok(());
     }
 
-    let user = auth.user.as_ref().ok_or_else(|| {
-        ApiError::unauthorized("Authentication required")
-    })?;
+    let user = auth
+        .user
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("Authentication required"))?;
 
     let has_read = check_repo_permission(state.store.as_ref(), user, repo, Permission::REPO_READ)?;
 

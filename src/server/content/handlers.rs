@@ -10,24 +10,26 @@ use axum::{
 };
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use git2::{ObjectType, Oid};
 
 use crate::server::AppState;
-use crate::server::response::{ApiError, ApiResponse, PaginatedResponse, StoreOptionExt, StoreResultExt};
+use crate::server::response::{
+    ApiError, ApiResponse, PaginatedResponse, StoreOptionExt, StoreResultExt,
+};
 
 use super::auth::{OptionalAuth, check_content_access};
 use super::dto::{
     ArchiveParams, BlameLineResponse, BlameResponse, BlobParams, BlobResponse, CompareParams,
-    CompareResponse, DiffResponse, ListCommitsParams, ReadmeParams, ReadmeResponse, RefResponse,
-    TreeEntryResponse, TreeParams, DEFAULT_PAGE_SIZE, DEFAULT_TREE_DEPTH, MAX_BLOB_SIZE,
-    MAX_PAGE_SIZE, MAX_TREE_DEPTH,
+    CompareResponse, DEFAULT_PAGE_SIZE, DEFAULT_TREE_DEPTH, DiffResponse, ListCommitsParams,
+    MAX_BLOB_SIZE, MAX_PAGE_SIZE, MAX_TREE_DEPTH, ReadmeParams, ReadmeResponse, RefResponse,
+    TreeEntryResponse, TreeParams,
 };
 use super::git_ops::{
-    build_diff, commit_to_response, compute_commit_stats, count_ahead_behind, entry_type_str,
-    find_merge_base, get_blob_at_path, get_commit, get_default_branch, get_tree, get_tree_at_path,
-    is_binary, open_repo, resolve_ref, signature_to_response, GitError,
+    GitError, build_diff, commit_to_response, compute_commit_stats, count_ahead_behind,
+    entry_type_str, find_merge_base, get_blob_at_path, get_commit, get_default_branch, get_tree,
+    get_tree_at_path, is_binary, open_repo, resolve_ref, signature_to_response,
 };
 
 fn repo_path(state: &AppState, namespace_id: &str, repo_name: &str) -> std::path::PathBuf {
@@ -108,16 +110,14 @@ pub async fn list_refs(
         return Err(GitError::EmptyRepo.into());
     }
 
-    refs.sort_by(|a, b| {
-        match (a.is_default, b.is_default) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => match (a.ref_type.as_str(), b.ref_type.as_str()) {
-                ("branch", "tag") => std::cmp::Ordering::Less,
-                ("tag", "branch") => std::cmp::Ordering::Greater,
-                _ => a.name.cmp(&b.name),
-            },
-        }
+    refs.sort_by(|a, b| match (a.is_default, b.is_default) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => match (a.ref_type.as_str(), b.ref_type.as_str()) {
+            ("branch", "tag") => std::cmp::Ordering::Less,
+            ("tag", "branch") => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        },
     });
 
     Ok(Json(ApiResponse::success(refs)))
@@ -134,10 +134,7 @@ pub async fn list_commits(
     let ref_name = params.ref_name.as_deref().unwrap_or("");
     let oid = resolve_ref(&git_repo, ref_name)?;
 
-    let limit = params
-        .limit
-        .unwrap_or(DEFAULT_PAGE_SIZE)
-        .min(MAX_PAGE_SIZE) as usize;
+    let limit = params.limit.unwrap_or(DEFAULT_PAGE_SIZE).min(MAX_PAGE_SIZE) as usize;
 
     let start_oid = if let Some(ref cursor) = params.cursor {
         Oid::from_str(cursor).map_err(|_| ApiError::bad_request("Invalid cursor"))?
@@ -167,7 +164,8 @@ pub async fn list_commits(
             break;
         }
 
-        let commit_oid = oid_result.map_err(|e| ApiError::internal(format!("Revwalk error: {e}")))?;
+        let commit_oid =
+            oid_result.map_err(|e| ApiError::internal(format!("Revwalk error: {e}")))?;
         let commit = get_commit(&git_repo, commit_oid)?;
 
         if let Some(filter_path) = path_filter {
@@ -232,7 +230,9 @@ pub async fn get_commit_handler(
     let commit = get_commit(&git_repo, oid)?;
     let stats = compute_commit_stats(&git_repo, &commit);
 
-    Ok(Json(ApiResponse::success(commit_to_response(&commit, stats))))
+    Ok(Json(ApiResponse::success(commit_to_response(
+        &commit, stats,
+    ))))
 }
 
 pub async fn get_commit_diff(
@@ -289,10 +289,7 @@ pub async fn compare_refs(
     let merge_base_oid = find_merge_base(&git_repo, base_oid, head_oid)?;
     let (ahead_by, behind_by) = count_ahead_behind(&git_repo, base_oid, head_oid)?;
 
-    let limit = params
-        .limit
-        .unwrap_or(DEFAULT_PAGE_SIZE)
-        .min(MAX_PAGE_SIZE) as usize;
+    let limit = params.limit.unwrap_or(DEFAULT_PAGE_SIZE).min(MAX_PAGE_SIZE) as usize;
 
     let start_oid = if let Some(ref cursor) = params.cursor {
         Oid::from_str(cursor).map_err(|_| ApiError::bad_request("Invalid cursor"))?
@@ -317,7 +314,8 @@ pub async fn compare_refs(
 
     let mut commits = Vec::new();
     for oid_result in revwalk.take(limit + 1) {
-        let commit_oid = oid_result.map_err(|e| ApiError::internal(format!("Revwalk error: {e}")))?;
+        let commit_oid =
+            oid_result.map_err(|e| ApiError::internal(format!("Revwalk error: {e}")))?;
         let commit = get_commit(&git_repo, commit_oid)?;
         let stats = compute_commit_stats(&git_repo, &commit);
         commits.push(commit_to_response(&commit, stats));
@@ -468,13 +466,13 @@ fn build_tree_entries(
 }
 
 fn sort_tree_entries(entries: &mut [TreeEntryResponse]) {
-    entries.sort_by(|a, b| {
-        match (a.entry_type.as_str(), b.entry_type.as_str()) {
+    entries.sort_by(
+        |a, b| match (a.entry_type.as_str(), b.entry_type.as_str()) {
             ("dir", t) if t != "dir" => std::cmp::Ordering::Less,
             (t, "dir") if t != "dir" => std::cmp::Ordering::Greater,
             _ => a.name.cmp(&b.name),
-        }
-    });
+        },
+    );
 
     for entry in entries.iter_mut() {
         if !entry.children.is_empty() {
@@ -539,7 +537,8 @@ fn serve_raw_blob(blob: &git2::Blob<'_>, filename: &str) -> Result<Response, Api
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_str(&content_type).unwrap_or(HeaderValue::from_static("application/octet-stream")),
+        HeaderValue::from_str(&content_type)
+            .unwrap_or(HeaderValue::from_static("application/octet-stream")),
     );
     headers.insert(
         header::CONTENT_LENGTH,
@@ -594,7 +593,10 @@ pub async fn get_blame(
     let oid = resolve_ref(&git_repo, &ref_name)?;
 
     let blame = git_repo
-        .blame_file(std::path::Path::new(path), Some(git2::BlameOptions::new().newest_commit(oid)))
+        .blame_file(
+            std::path::Path::new(path),
+            Some(git2::BlameOptions::new().newest_commit(oid)),
+        )
         .map_err(|_| GitError::PathNotFound(path.to_string()))?;
 
     let commit = get_commit(&git_repo, oid)?;
@@ -696,10 +698,7 @@ pub async fn get_archive(
     };
 
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(content_type),
-    );
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     headers.insert(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")).unwrap(),

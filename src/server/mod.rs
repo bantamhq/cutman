@@ -2,6 +2,7 @@ mod admin;
 mod content;
 pub mod dto;
 mod git;
+mod lfs;
 pub mod response;
 mod router;
 mod user;

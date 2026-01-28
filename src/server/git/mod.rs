@@ -1,4 +1,4 @@
-mod auth;
+pub mod auth;
 mod handlers;
 mod process;
 
@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post},
 };
 
+use super::lfs::lfs_router;
 use crate::server::AppState;
 
 pub fn git_router() -> Router<Arc<AppState>> {
@@ -22,4 +23,5 @@ pub fn git_router() -> Router<Arc<AppState>> {
             "/{namespace}/{repo}/git-receive-pack",
             post(handlers::git_receive_pack),
         )
+        .nest("/{namespace}/{repo}/info/lfs", lfs_router())
 }

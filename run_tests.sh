@@ -195,6 +195,8 @@ TEST_FILES=(
     "$TEST_DIR/content/archive.hurl"
     "$TEST_DIR/content/readme.hurl"
     "$TEST_DIR/git/protocol.hurl"
+    "$TEST_DIR/lfs/batch.hurl"
+    "$TEST_DIR/lfs/objects.hurl"
 )
 
 # Run all tests sequentially with --jobs 1

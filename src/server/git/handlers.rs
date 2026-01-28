@@ -130,7 +130,13 @@ pub async fn info_refs(
 
     let is_write = service.is_write();
 
-    if let Err(e) = check_git_access(&state, &ctx.git_auth, &ctx.namespace, ctx.repo.as_ref(), is_write) {
+    if let Err(e) = check_git_access(
+        &state,
+        &ctx.git_auth,
+        &ctx.namespace,
+        ctx.repo.as_ref(),
+        is_write,
+    ) {
         return git_error_response(e);
     }
 
@@ -235,7 +241,13 @@ pub async fn git_receive_pack(
         Err(e) => return git_error_response(e),
     };
 
-    if let Err(e) = check_git_access(&state, &ctx.git_auth, &ctx.namespace, ctx.repo.as_ref(), true) {
+    if let Err(e) = check_git_access(
+        &state,
+        &ctx.git_auth,
+        &ctx.namespace,
+        ctx.repo.as_ref(),
+        true,
+    ) {
         return git_error_response(e);
     }
 
