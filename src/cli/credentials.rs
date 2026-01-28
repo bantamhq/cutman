@@ -50,3 +50,14 @@ pub fn save_credentials(creds: &Credentials) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// Deletes stored credentials. Returns true if credentials were deleted, false if none existed.
+pub fn delete_credentials() -> anyhow::Result<bool> {
+    let path = credentials_path()?;
+    if path.exists() {
+        fs::remove_file(&path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::{
     Json,
     extract::{Path, State},
+    http::StatusCode,
     response::IntoResponse,
 };
 
@@ -10,11 +11,16 @@ use crate::auth::RequireUser;
 use crate::server::AppState;
 use crate::server::dto::SetRepoFolderRequest;
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
-use crate::types::Permission;
+use crate::types::{Folder, Permission};
 
 use super::access::require_repo_permission;
 
-pub async fn get_repo_folder(
+fn folder_to_vec(folder: Option<Folder>) -> Vec<Folder> {
+    folder.into_iter().collect()
+}
+
+/// GET /repos/{id}/folders - Returns array of folders (0 or 1)
+pub async fn list_repo_folders(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -36,9 +42,10 @@ pub async fn get_repo_folder(
         None => None,
     };
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(folder)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(folder_to_vec(folder))))
 }
 
+/// POST /repos/{id}/folders - Set the folder for a repo
 pub async fn set_repo_folder(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
@@ -79,5 +86,41 @@ pub async fn set_repo_folder(
         None => None,
     };
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(folder)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(folder_to_vec(folder))))
+}
+
+#[derive(serde::Deserialize)]
+pub struct RepoFolderPath {
+    id: String,
+    folder_id: String,
+}
+
+/// DELETE /repos/{id}/folders/{folder_id} - Clear folder if it matches
+pub async fn clear_repo_folder(
+    auth: RequireUser,
+    State(state): State<Arc<AppState>>,
+    Path(path): Path<RepoFolderPath>,
+) -> impl IntoResponse {
+    let user = &auth.user;
+    let store = state.store.as_ref();
+
+    let repo = store
+        .get_repo_by_id(&path.id)
+        .api_err("Failed to get repo")?
+        .or_not_found("Repository not found")?;
+
+    require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
+
+    match &repo.folder_id {
+        Some(current_folder_id) if current_folder_id == &path.folder_id => {
+            store
+                .set_repo_folder(&repo.id, None)
+                .api_err("Failed to clear repo folder")?;
+            Ok::<_, ApiError>(StatusCode::NO_CONTENT.into_response())
+        }
+        Some(_) => Err(ApiError::bad_request(
+            "Folder ID does not match current folder",
+        )),
+        None => Err(ApiError::not_found("Repository has no folder assigned")),
+    }
 }

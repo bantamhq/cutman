@@ -5,13 +5,29 @@ mod handlers;
 
 use std::sync::Arc;
 
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{delete, get, patch, post, put},
+};
 
 use crate::server::AppState;
 
 pub fn content_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/repos/{id}/refs", get(handlers::list_refs))
+        .route("/repos/{id}/refs", post(handlers::create_ref_handler))
+        .route(
+            "/repos/{id}/refs/{type}/{*name}",
+            patch(handlers::update_ref_handler),
+        )
+        .route(
+            "/repos/{id}/refs/{type}/{*name}",
+            delete(handlers::delete_ref_handler),
+        )
+        .route(
+            "/repos/{id}/default-branch",
+            put(handlers::set_default_branch_handler),
+        )
         .route("/repos/{id}/commits", get(handlers::list_commits))
         .route(
             "/repos/{id}/commits/{sha}",

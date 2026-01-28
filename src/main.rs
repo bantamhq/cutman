@@ -10,13 +10,15 @@ use uuid::Uuid;
 
 use cutman::auth::TokenGenerator;
 use cutman::cli::{
-    AdminCommands, AuthCommands, NamespaceCommands, PermissionCommands, RepoCommands, TagCommands,
-    TokenCommands, UserCommands, run_auth_login, run_info, run_namespace_add, run_namespace_remove,
-    run_new, run_permission_grant, run_permission_revoke, run_repo_clone, run_repo_delete,
-    run_repo_tag, run_tag_create, run_tag_delete, run_token_create, run_token_revoke, run_user_add,
-    run_user_remove,
+    AdminCommands, AuthCommands, CredentialCommands, NamespaceCommands, PermissionCommands,
+    RepoCommands, TagCommands, TokenCommands, UserCommands, print_credential_help, run_auth_login,
+    run_auth_logout, run_credential_erase, run_credential_get, run_credential_store, run_info,
+    run_namespace_add, run_namespace_remove, run_new, run_permission_grant,
+    run_permission_repo_grant, run_permission_repo_revoke, run_permission_revoke, run_repo_clone,
+    run_repo_delete, run_repo_tag, run_tag_create, run_tag_delete, run_token_create,
+    run_token_revoke, run_user_add, run_user_remove,
 };
-use cutman::config::ServerConfig;
+use cutman::config::{ServerConfig, ServerConfigOverrides};
 use cutman::server::{AppState, create_router};
 use cutman::store::{SqliteStore, Store};
 use cutman::types::{Namespace, Token, User};
@@ -66,17 +68,21 @@ enum Commands {
 
     /// Start the server
     Serve {
-        /// Host to bind to
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
+        /// Config file path (default: ./server.toml or /etc/cutman/server.toml)
+        #[arg(long, short)]
+        config: Option<String>,
 
-        /// Port to bind to
-        #[arg(long, short, default_value = "8080")]
-        port: u16,
+        /// Host to bind to (default: 127.0.0.1)
+        #[arg(long)]
+        host: Option<String>,
 
-        /// Data directory for database and repositories
-        #[arg(long, default_value = "./data")]
-        data_dir: String,
+        /// Port to bind to (default: 8080)
+        #[arg(long, short)]
+        port: Option<u16>,
+
+        /// Data directory for database and repositories (default: ./data)
+        #[arg(long)]
+        data_dir: Option<String>,
 
         /// Public base URL for external access (e.g., "https://git.example.com").
         /// Used for generating LFS action URLs. If not set, URLs are derived from request headers.
@@ -110,6 +116,12 @@ enum Commands {
     Tag {
         #[command(subcommand)]
         command: TagCommands,
+    },
+
+    /// Git credential helper (use: git config credential.helper "cutman credential")
+    Credential {
+        #[command(subcommand)]
+        command: Option<CredentialCommands>,
     },
 }
 
@@ -239,27 +251,16 @@ fn main() -> anyhow::Result<()> {
                     username,
                     create_token,
                     non_interactive,
-                    list,
-                    json,
                 } => {
-                    run_user_add(
-                        data_dir,
-                        username,
-                        create_token,
-                        non_interactive,
-                        list,
-                        json,
-                    )?;
+                    run_user_add(data_dir, username, create_token, non_interactive)?;
                 }
                 UserCommands::Remove {
                     data_dir,
                     user_id,
                     non_interactive,
-                    list,
-                    json,
                     yes,
                 } => {
-                    run_user_remove(data_dir, user_id, non_interactive, list, json, yes)?;
+                    run_user_remove(data_dir, user_id, non_interactive, yes)?;
                 }
             },
             AdminCommands::Token { command } => match command {
@@ -268,20 +269,16 @@ fn main() -> anyhow::Result<()> {
                     user_id,
                     expires_days,
                     non_interactive,
-                    list,
-                    json,
                 } => {
-                    run_token_create(data_dir, user_id, expires_days, non_interactive, list, json)?;
+                    run_token_create(data_dir, user_id, expires_days, non_interactive)?;
                 }
                 TokenCommands::Revoke {
                     data_dir,
                     token_id,
                     non_interactive,
-                    list,
-                    json,
                     yes,
                 } => {
-                    run_token_revoke(data_dir, token_id, non_interactive, list, json, yes)?;
+                    run_token_revoke(data_dir, token_id, non_interactive, yes)?;
                 }
             },
             AdminCommands::Namespace { command } => match command {
@@ -289,20 +286,16 @@ fn main() -> anyhow::Result<()> {
                     data_dir,
                     name,
                     non_interactive,
-                    list,
-                    json,
                 } => {
-                    run_namespace_add(data_dir, name, non_interactive, list, json)?;
+                    run_namespace_add(data_dir, name, non_interactive)?;
                 }
                 NamespaceCommands::Remove {
                     data_dir,
                     namespace_id,
                     non_interactive,
-                    list,
-                    json,
                     yes,
                 } => {
-                    run_namespace_remove(data_dir, namespace_id, non_interactive, list, json, yes)?;
+                    run_namespace_remove(data_dir, namespace_id, non_interactive, yes)?;
                 }
             },
             AdminCommands::Permission { command } => match command {
@@ -312,8 +305,6 @@ fn main() -> anyhow::Result<()> {
                     namespace_id,
                     permissions,
                     non_interactive,
-                    list,
-                    json,
                 } => {
                     run_permission_grant(
                         data_dir,
@@ -321,8 +312,6 @@ fn main() -> anyhow::Result<()> {
                         namespace_id,
                         permissions,
                         non_interactive,
-                        list,
-                        json,
                     )?;
                 }
                 PermissionCommands::Revoke {
@@ -330,19 +319,33 @@ fn main() -> anyhow::Result<()> {
                     user_id,
                     namespace_id,
                     non_interactive,
-                    list,
-                    json,
                     yes,
                 } => {
-                    run_permission_revoke(
+                    run_permission_revoke(data_dir, user_id, namespace_id, non_interactive, yes)?;
+                }
+                PermissionCommands::RepoGrant {
+                    data_dir,
+                    user_id,
+                    repo_id,
+                    permissions,
+                    non_interactive,
+                } => {
+                    run_permission_repo_grant(
                         data_dir,
                         user_id,
-                        namespace_id,
+                        repo_id,
+                        permissions,
                         non_interactive,
-                        list,
-                        json,
-                        yes,
                     )?;
+                }
+                PermissionCommands::RepoRevoke {
+                    data_dir,
+                    user_id,
+                    repo_id,
+                    non_interactive,
+                    yes,
+                } => {
+                    run_permission_repo_revoke(data_dir, user_id, repo_id, non_interactive, yes)?;
                 }
             },
             AdminCommands::Info { data_dir, json } => {
@@ -350,12 +353,21 @@ fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Serve {
+            config,
             host,
             port,
             data_dir,
             public_base_url,
         } => {
-            run_server(host, port, data_dir, public_base_url)?;
+            let overrides = ServerConfigOverrides {
+                host,
+                port,
+                data_dir: data_dir.map(Into::into),
+                public_base_url,
+            };
+            let config_path = config.as_ref().map(std::path::Path::new);
+            let server_config = ServerConfig::load_with_overrides(config_path, overrides)?;
+            run_server(server_config)?;
         }
         Commands::Auth { command } => match command {
             AuthCommands::Login {
@@ -365,6 +377,9 @@ fn main() -> anyhow::Result<()> {
             } => {
                 run_auth_login(server, token, non_interactive)?;
             }
+            AuthCommands::Logout => {
+                run_auth_logout()?;
+            }
         },
         Commands::New { name, remote } => {
             run_new(name, remote)?;
@@ -372,29 +387,23 @@ fn main() -> anyhow::Result<()> {
         Commands::Repo { command } => match command {
             RepoCommands::Delete {
                 repo,
-                list,
                 non_interactive,
-                json,
                 yes,
             } => {
-                run_repo_delete(repo, list, non_interactive, json, yes)?;
+                run_repo_delete(repo, non_interactive, yes)?;
             }
             RepoCommands::Clone {
                 repo,
-                list,
                 non_interactive,
-                json,
             } => {
-                run_repo_clone(repo, list, non_interactive, json)?;
+                run_repo_clone(repo, non_interactive)?;
             }
             RepoCommands::Tag {
                 repo,
                 tags,
-                list,
                 non_interactive,
-                json,
             } => {
-                run_repo_tag(repo, tags, list, non_interactive, json)?;
+                run_repo_tag(repo, tags, non_interactive)?;
             }
         },
         Commands::Tag { command } => match command {
@@ -402,22 +411,32 @@ fn main() -> anyhow::Result<()> {
                 name,
                 color,
                 namespace,
-                list,
                 non_interactive,
-                json,
             } => {
-                run_tag_create(name, color, namespace, list, non_interactive, json)?;
+                run_tag_create(name, color, namespace, non_interactive)?;
             }
             TagCommands::Delete {
                 tag_id,
                 namespace,
-                list,
                 non_interactive,
-                json,
                 yes,
                 force,
             } => {
-                run_tag_delete(tag_id, namespace, list, non_interactive, json, yes, force)?;
+                run_tag_delete(tag_id, namespace, non_interactive, yes, force)?;
+            }
+        },
+        Commands::Credential { command } => match command {
+            Some(CredentialCommands::Get) => {
+                run_credential_get()?;
+            }
+            Some(CredentialCommands::Store) => {
+                run_credential_store()?;
+            }
+            Some(CredentialCommands::Erase) => {
+                run_credential_erase()?;
+            }
+            None => {
+                print_credential_help();
             }
         },
     }
@@ -426,19 +445,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[tokio::main]
-async fn run_server(
-    host: String,
-    port: u16,
-    data_dir: String,
-    public_base_url: Option<String>,
-) -> anyhow::Result<()> {
-    let config = ServerConfig {
-        host,
-        port,
-        data_dir: data_dir.into(),
-        public_base_url,
-    };
-
+async fn run_server(config: ServerConfig) -> anyhow::Result<()> {
     let token_file = config.data_dir.join(".admin_token");
     if !token_file.exists() {
         bail!(

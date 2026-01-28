@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::auth::TokenGenerator;
 use crate::store::Store;
-use crate::types::{Namespace, NamespaceGrant, Permission, Repo, Tag, Token, User};
+use crate::types::{Namespace, NamespaceGrant, Permission, Repo, RepoGrant, Tag, Token, User};
 
 /// User with resolved namespace name for display
 pub struct UserDisplay {
@@ -115,6 +115,25 @@ impl fmt::Display for TagDisplay {
     }
 }
 
+/// Repo grant with resolved repo name for display
+pub struct RepoGrantDisplay {
+    pub grant: RepoGrant,
+    pub repo_name: String,
+    pub namespace_name: String,
+}
+
+impl fmt::Display for RepoGrantDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}/{} [{}]",
+            self.namespace_name,
+            self.repo_name,
+            self.grant.allow_bits.to_strings().join(", ")
+        )
+    }
+}
+
 /// Print a list of tags with optional color formatting
 pub fn print_tags_list(tags: &[Tag]) {
     if tags.is_empty() {
@@ -207,23 +226,41 @@ pub fn format_relative_time(dt: &DateTime<Utc>) -> String {
     }
 }
 
+/// Resolve a namespace ID to its name, returning "<unknown>" if not found
+#[must_use]
+pub fn resolve_namespace_name(store: &impl Store, namespace_id: &str) -> String {
+    store
+        .get_namespace(namespace_id)
+        .ok()
+        .flatten()
+        .map(|ns| ns.name)
+        .unwrap_or_else(|| "<unknown>".to_string())
+}
+
+/// Build a repo display name in "namespace/repo" format
+pub fn resolve_repo_display_name(store: &impl Store, repo_id: &str) -> anyhow::Result<String> {
+    match store.get_repo_by_id(repo_id)? {
+        Some(repo) => {
+            let ns_name = resolve_namespace_name(store, &repo.namespace_id);
+            Ok(format!("{}/{}", ns_name, repo.name))
+        }
+        None => Ok("<unknown>".to_string()),
+    }
+}
+
 /// Load users with their namespace names
 fn load_users_with_namespaces(store: &impl Store) -> anyhow::Result<Vec<UserDisplay>> {
     let users = store.list_users("", 1000)?;
-    let mut displays = Vec::with_capacity(users.len());
-
-    for user in users {
-        let namespace_name = store
-            .get_namespace(&user.primary_namespace_id)?
-            .map(|ns| ns.name)
-            .unwrap_or_else(|| "<unknown>".to_string());
-
-        displays.push(UserDisplay {
-            user,
-            namespace_name,
-        });
-    }
-
+    let displays = users
+        .into_iter()
+        .map(|user| {
+            let namespace_name = resolve_namespace_name(store, &user.primary_namespace_id);
+            UserDisplay {
+                user,
+                namespace_name,
+            }
+        })
+        .collect();
     Ok(displays)
 }
 
@@ -259,16 +296,11 @@ fn load_tokens_with_users(store: &impl Store) -> anyhow::Result<Vec<TokenDisplay
     let mut displays = Vec::with_capacity(tokens.len());
 
     for token in tokens {
-        let username = if let Some(ref user_id) = token.user_id {
-            if let Some(user) = store.get_user(user_id)? {
-                store
-                    .get_namespace(&user.primary_namespace_id)?
-                    .map(|ns| ns.name)
-            } else {
-                None
-            }
-        } else {
-            None
+        let username = match &token.user_id {
+            Some(user_id) => store
+                .get_user(user_id)?
+                .map(|u| resolve_namespace_name(store, &u.primary_namespace_id)),
+            None => None,
         };
 
         displays.push(TokenDisplay { token, username });
@@ -283,20 +315,16 @@ fn load_user_grants_with_names(
     user_id: &str,
 ) -> anyhow::Result<Vec<GrantDisplay>> {
     let grants = store.list_user_namespace_grants(user_id)?;
-    let mut displays = Vec::with_capacity(grants.len());
-
-    for grant in grants {
-        let namespace_name = store
-            .get_namespace(&grant.namespace_id)?
-            .map(|ns| ns.name)
-            .unwrap_or_else(|| "<unknown>".to_string());
-
-        displays.push(GrantDisplay {
-            grant,
-            namespace_name,
-        });
-    }
-
+    let displays = grants
+        .into_iter()
+        .map(|grant| {
+            let namespace_name = resolve_namespace_name(store, &grant.namespace_id);
+            GrantDisplay {
+                grant,
+                namespace_name,
+            }
+        })
+        .collect();
     Ok(displays)
 }
 
@@ -494,10 +522,7 @@ fn resolve_user_with_name(store: &impl Store, user_id: &str) -> anyhow::Result<(
     let user = store
         .get_user(user_id)?
         .ok_or_else(|| anyhow::anyhow!("User not found: {}", user_id))?;
-    let name = store
-        .get_namespace(&user.primary_namespace_id)?
-        .map(|ns| ns.name)
-        .unwrap_or_else(|| "<unknown>".to_string());
+    let name = resolve_namespace_name(store, &user.primary_namespace_id);
     Ok((user, name))
 }
 
@@ -514,10 +539,7 @@ pub fn get_or_pick_user(
     } else {
         match pick_user(store)? {
             Some(user) => {
-                let name = store
-                    .get_namespace(&user.primary_namespace_id)?
-                    .map(|ns| ns.name)
-                    .unwrap_or_else(|| "<unknown>".to_string());
+                let name = resolve_namespace_name(store, &user.primary_namespace_id);
                 Ok(Some((user, name)))
             }
             None => Ok(None),
@@ -569,4 +591,110 @@ pub fn create_token_for_user(
         last_used_at: None,
     };
     Ok((token, raw_token))
+}
+
+/// Load all repos with their namespace names
+fn load_repos_with_namespaces(store: &impl Store) -> anyhow::Result<Vec<RepoDisplay>> {
+    let namespaces = store.list_namespaces("", 1000)?;
+    let namespace_map: std::collections::HashMap<String, String> =
+        namespaces.into_iter().map(|ns| (ns.id, ns.name)).collect();
+
+    let mut all_repos = Vec::new();
+    for ns_id in namespace_map.keys() {
+        let repos = store.list_repos(ns_id, "", 1000)?;
+        all_repos.extend(repos);
+    }
+
+    Ok(repos_to_displays(all_repos, &namespace_map))
+}
+
+/// Load repo grants for a user with repo names
+fn load_user_repo_grants_with_names(
+    store: &impl Store,
+    user_id: &str,
+) -> anyhow::Result<Vec<RepoGrantDisplay>> {
+    let grants = store.list_user_repo_grants(user_id)?;
+    let mut displays = Vec::with_capacity(grants.len());
+
+    for grant in grants {
+        let (repo_name, namespace_name) = match store.get_repo_by_id(&grant.repo_id)? {
+            Some(repo) => (repo.name.clone(), resolve_namespace_name(store, &repo.namespace_id)),
+            None => ("<deleted>".to_string(), "<unknown>".to_string()),
+        };
+
+        displays.push(RepoGrantDisplay {
+            grant,
+            repo_name,
+            namespace_name,
+        });
+    }
+
+    Ok(displays)
+}
+
+/// Pick a repo from all available repos
+pub fn pick_repo(store: &impl Store) -> anyhow::Result<Option<Repo>> {
+    let repos = load_repos_with_namespaces(store)?;
+
+    if repos.is_empty() {
+        println!("No repositories found.");
+        return Ok(None);
+    }
+
+    let selection = Select::new("Select repository:", repos)
+        .with_page_size(15)
+        .with_help_message("Type to filter, Enter to select")
+        .with_vim_mode(true)
+        .prompt();
+
+    match selection {
+        Ok(display) => Ok(Some(display.repo)),
+        Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Pick a repo grant for a specific user
+pub fn pick_repo_grant(store: &impl Store, user_id: &str) -> anyhow::Result<Option<RepoGrant>> {
+    let grants = load_user_repo_grants_with_names(store, user_id)?;
+
+    if grants.is_empty() {
+        println!("No repo grants found for this user.");
+        return Ok(None);
+    }
+
+    let selection = Select::new("Select repo grant to revoke:", grants)
+        .with_page_size(15)
+        .with_help_message("Type to filter, Enter to select")
+        .with_vim_mode(true)
+        .prompt();
+
+    match selection {
+        Ok(display) => Ok(Some(display.grant)),
+        Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Pick repo permissions using multi-select
+pub fn pick_repo_permissions() -> anyhow::Result<Option<Permission>> {
+    let options = vec!["repo:read", "repo:write", "repo:admin"];
+
+    let selection = MultiSelect::new("Permissions to grant:", options)
+        .with_page_size(3)
+        .with_help_message("Space to toggle, Enter to confirm")
+        .with_vim_mode(true)
+        .prompt();
+
+    match selection {
+        Ok(selected) => {
+            if selected.is_empty() {
+                return Ok(None);
+            }
+            let refs: Vec<&str> = selected.into_iter().collect();
+            Ok(Permission::parse_many(&refs))
+        }
+        Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }

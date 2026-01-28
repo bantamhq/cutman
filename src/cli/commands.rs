@@ -68,14 +68,6 @@ pub enum UserCommands {
         /// Skip interactive prompts (requires --username)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List existing users instead of adding
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
 
     /// Remove a user
@@ -91,14 +83,6 @@ pub enum UserCommands {
         /// Skip interactive prompts (requires --user-id)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List users instead of removing
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
 
         /// Skip confirmation prompt
         #[arg(long, short = 'y')]
@@ -125,14 +109,6 @@ pub enum TokenCommands {
         /// Skip interactive prompts (requires --user-id)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List existing tokens instead of creating
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
 
     /// Revoke an access token
@@ -148,14 +124,6 @@ pub enum TokenCommands {
         /// Skip interactive prompts (requires --token-id)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List tokens instead of revoking
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
 
         /// Skip confirmation prompt
         #[arg(long, short = 'y')]
@@ -178,14 +146,6 @@ pub enum NamespaceCommands {
         /// Skip interactive prompts (requires --name)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List existing namespaces instead of adding
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
 
     /// Remove a shared namespace
@@ -201,14 +161,6 @@ pub enum NamespaceCommands {
         /// Skip interactive prompts (requires --namespace-id)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List namespaces instead of removing
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
 
         /// Skip confirmation prompt
         #[arg(long, short = 'y')]
@@ -239,14 +191,6 @@ pub enum PermissionCommands {
         /// Skip interactive prompts (requires --user-id, --namespace-id, --permissions)
         #[arg(long)]
         non_interactive: bool,
-
-        /// List existing grants instead of creating
-        #[arg(long)]
-        list: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
 
     /// Revoke a user's permissions on a namespace
@@ -267,13 +211,51 @@ pub enum PermissionCommands {
         #[arg(long)]
         non_interactive: bool,
 
-        /// List grants instead of revoking
-        #[arg(long)]
-        list: bool,
+        /// Skip confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 
-        /// Output as JSON
+    /// Grant permissions to a user on a specific repository
+    RepoGrant {
+        /// Data directory for database and repositories
+        #[arg(long, default_value = "./data")]
+        data_dir: String,
+
+        /// User ID to grant permissions to
         #[arg(long)]
-        json: bool,
+        user_id: Option<String>,
+
+        /// Repository ID to grant access to
+        #[arg(long)]
+        repo_id: Option<String>,
+
+        /// Permissions to grant (comma-separated: repo:read,repo:write,repo:admin)
+        #[arg(long)]
+        permissions: Option<String>,
+
+        /// Skip interactive prompts (requires --user-id, --repo-id, --permissions)
+        #[arg(long)]
+        non_interactive: bool,
+    },
+
+    /// Revoke a user's permissions on a specific repository
+    RepoRevoke {
+        /// Data directory for database and repositories
+        #[arg(long, default_value = "./data")]
+        data_dir: String,
+
+        /// User ID to revoke permissions from
+        #[arg(long)]
+        user_id: Option<String>,
+
+        /// Repository ID to revoke access from
+        #[arg(long)]
+        repo_id: Option<String>,
+
+        /// Skip interactive prompts (requires --user-id and --repo-id)
+        #[arg(long)]
+        non_interactive: bool,
 
         /// Skip confirmation prompt
         #[arg(long, short = 'y')]
@@ -297,6 +279,9 @@ pub enum AuthCommands {
         #[arg(long)]
         non_interactive: bool,
     },
+
+    /// Clear stored credentials
+    Logout,
 }
 
 #[derive(Subcommand)]
@@ -306,17 +291,9 @@ pub enum RepoCommands {
         /// Repository (format: namespace/repo or just repo for primary namespace)
         repo: Option<String>,
 
-        /// List repos instead of deleting
-        #[arg(long)]
-        list: bool,
-
         /// Skip interactive prompts
         #[arg(long)]
         non_interactive: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
 
         /// Skip confirmation
         #[arg(long, short = 'y')]
@@ -328,17 +305,9 @@ pub enum RepoCommands {
         /// Repository (format: namespace/repo or just repo for primary namespace)
         repo: Option<String>,
 
-        /// List repos instead of cloning
-        #[arg(long)]
-        list: bool,
-
         /// Skip interactive prompts
         #[arg(long)]
         non_interactive: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
 
     /// Set tags on a repository
@@ -350,18 +319,20 @@ pub enum RepoCommands {
         #[arg(long)]
         tags: Option<String>,
 
-        /// List available tags instead of setting
-        #[arg(long)]
-        list: bool,
-
         /// Skip interactive prompts
         #[arg(long)]
         non_interactive: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
+}
+
+#[derive(Subcommand)]
+pub enum CredentialCommands {
+    /// Output credentials for git (reads from stdin)
+    Get,
+    /// No-op (use 'cutman auth login' instead)
+    Store,
+    /// Clear credentials if host matches
+    Erase,
 }
 
 #[derive(Subcommand)]
@@ -380,17 +351,9 @@ pub enum TagCommands {
         #[arg(short, long)]
         namespace: Option<String>,
 
-        /// List tags instead of creating
-        #[arg(long)]
-        list: bool,
-
         /// Skip interactive prompts
         #[arg(long)]
         non_interactive: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
     },
 
     /// Delete a tag
@@ -403,17 +366,9 @@ pub enum TagCommands {
         #[arg(short, long)]
         namespace: Option<String>,
 
-        /// List tags instead of deleting
-        #[arg(long)]
-        list: bool,
-
         /// Skip interactive prompts
         #[arg(long)]
         non_interactive: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
 
         /// Skip confirmation
         #[arg(long, short = 'y')]

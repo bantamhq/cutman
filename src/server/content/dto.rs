@@ -157,3 +157,25 @@ pub struct CompareParams {
     pub cursor: Option<String>,
     pub limit: Option<i32>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRefRequest {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ref_type: String,
+    pub target_sha: String,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateRefRequest {
+    pub target_sha: String,
+    #[serde(default)]
+    pub expected_sha: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetDefaultBranchRequest {
+    pub branch: String,
+}

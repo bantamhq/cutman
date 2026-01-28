@@ -265,3 +265,134 @@ pub fn entry_type_str(kind: Option<ObjectType>, filemode: i32) -> &'static str {
         _ => "file",
     }
 }
+
+/// Create a new reference (branch or tag)
+pub fn create_ref(
+    repo: &Repository,
+    ref_type: &str,
+    name: &str,
+    target_sha: &str,
+    force: bool,
+) -> Result<Oid, GitError> {
+    let oid = Oid::from_str(target_sha)
+        .map_err(|_| GitError::Internal(format!("Invalid SHA: {target_sha}")))?;
+
+    repo.find_commit(oid)
+        .map_err(|_| GitError::RefNotFound(format!("Target commit not found: {target_sha}")))?;
+
+    let full_ref = match ref_type {
+        "branch" => format!("refs/heads/{name}"),
+        "tag" => format!("refs/tags/{name}"),
+        _ => {
+            return Err(GitError::Internal(format!(
+                "Invalid ref type: {ref_type}. Must be 'branch' or 'tag'"
+            )));
+        }
+    };
+
+    if !force && repo.find_reference(&full_ref).is_ok() {
+        return Err(GitError::Internal(format!(
+            "Reference already exists: {name}"
+        )));
+    }
+
+    repo.reference(
+        &full_ref,
+        oid,
+        force,
+        &format!("Creating {ref_type} {name}"),
+    )
+    .map_err(|e| GitError::Internal(format!("Failed to create reference: {e}")))?;
+
+    Ok(oid)
+}
+
+/// Update an existing reference
+pub fn update_ref(
+    repo: &Repository,
+    ref_type: &str,
+    name: &str,
+    target_sha: &str,
+    expected_sha: Option<&str>,
+) -> Result<Oid, GitError> {
+    let full_ref = match ref_type {
+        "branch" => format!("refs/heads/{name}"),
+        "tag" => format!("refs/tags/{name}"),
+        _ => {
+            return Err(GitError::Internal(format!(
+                "Invalid ref type: {ref_type}. Must be 'branch' or 'tag'"
+            )));
+        }
+    };
+
+    let current_ref = repo
+        .find_reference(&full_ref)
+        .map_err(|_| GitError::RefNotFound(name.to_string()))?;
+
+    if let Some(expected) = expected_sha {
+        let expected_oid = Oid::from_str(expected)
+            .map_err(|_| GitError::Internal(format!("Invalid expected SHA: {expected}")))?;
+
+        let current_oid = current_ref.target().ok_or_else(|| {
+            GitError::Internal("Reference has no target (symbolic reference)".to_string())
+        })?;
+
+        if current_oid != expected_oid {
+            return Err(GitError::Internal(format!(
+                "Reference has been updated. Expected {expected}, found {current_oid}"
+            )));
+        }
+    }
+
+    let new_oid = Oid::from_str(target_sha)
+        .map_err(|_| GitError::Internal(format!("Invalid SHA: {target_sha}")))?;
+
+    repo.find_commit(new_oid)
+        .map_err(|_| GitError::RefNotFound(format!("Target commit not found: {target_sha}")))?;
+
+    repo.reference(
+        &full_ref,
+        new_oid,
+        true,
+        &format!("Updating {ref_type} {name}"),
+    )
+    .map_err(|e| GitError::Internal(format!("Failed to update reference: {e}")))?;
+
+    Ok(new_oid)
+}
+
+/// Delete a reference
+pub fn delete_ref(repo: &Repository, ref_type: &str, name: &str) -> Result<(), GitError> {
+    let full_ref = match ref_type {
+        "branch" => format!("refs/heads/{name}"),
+        "tag" => format!("refs/tags/{name}"),
+        _ => {
+            return Err(GitError::Internal(format!(
+                "Invalid ref type: {ref_type}. Must be 'branch' or 'tag'"
+            )));
+        }
+    };
+
+    let mut reference = repo
+        .find_reference(&full_ref)
+        .map_err(|_| GitError::RefNotFound(name.to_string()))?;
+
+    reference
+        .delete()
+        .map_err(|e| GitError::Internal(format!("Failed to delete reference: {e}")))?;
+
+    Ok(())
+}
+
+/// Set the default branch (HEAD)
+pub fn set_default_branch(repo: &Repository, branch: &str) -> Result<(), GitError> {
+    let full_ref = format!("refs/heads/{branch}");
+
+    repo.find_reference(&full_ref)
+        .map_err(|_| GitError::RefNotFound(branch.to_string()))?;
+
+    repo.set_head(&full_ref)
+        .map_err(|e| GitError::Internal(format!("Failed to set HEAD: {e}")))?;
+
+    Ok(())
+}

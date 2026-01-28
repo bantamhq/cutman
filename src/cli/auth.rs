@@ -1,11 +1,16 @@
 use inquire::Text;
 
-use super::credentials::{Credentials, save_credentials};
-use super::http_client::ApiClient;
-use crate::types::Namespace;
+use super::credentials::{Credentials, delete_credentials, save_credentials};
+use super::http_client::{ApiClient, NamespaceWithPrimary};
 
 fn normalize_server_url(url: &str) -> String {
     let url = url.trim().trim_end_matches('/');
+
+    // Strip trailing API paths to avoid duplication when constructing request URLs
+    let url = url
+        .trim_end_matches("/api/v1")
+        .trim_end_matches("/api")
+        .trim_end_matches('/');
 
     if url.starts_with("http://") || url.starts_with("https://") {
         return url.to_string();
@@ -67,7 +72,7 @@ pub fn run_auth_login(
     };
 
     let client = ApiClient::new(&creds)?;
-    let _namespaces: Vec<Namespace> = client.get("/namespaces")?;
+    let _namespaces: Vec<NamespaceWithPrimary> = client.get("/namespaces")?;
 
     save_credentials(&creds)?;
 
@@ -75,5 +80,18 @@ pub fn run_auth_login(
     println!("Logged in to {}", server_url);
     println!();
 
+    Ok(())
+}
+
+pub fn run_auth_logout() -> anyhow::Result<()> {
+    if delete_credentials()? {
+        println!();
+        println!("Logged out successfully.");
+        println!();
+    } else {
+        println!();
+        println!("No credentials found.");
+        println!();
+    }
     Ok(())
 }

@@ -39,9 +39,13 @@ pub fn user_router() -> Router<Arc<AppState>> {
             "/repos/{id}/tags/{tag_id}",
             delete(repo_tags::remove_repo_tag),
         )
-        // Repo folder (one-to-many)
-        .route("/repos/{id}/folder", get(repo_folder::get_repo_folder))
-        .route("/repos/{id}/folder", put(repo_folder::set_repo_folder))
+        // Repo folders (one-to-one relationship, plural for consistency)
+        .route("/repos/{id}/folders", get(repo_folder::list_repo_folders))
+        .route("/repos/{id}/folders", post(repo_folder::set_repo_folder))
+        .route(
+            "/repos/{id}/folders/{folder_id}",
+            delete(repo_folder::clear_repo_folder),
+        )
         // Tags
         .route("/tags", get(tags::list_tags))
         .route("/tags", post(tags::create_tag))

@@ -22,19 +22,25 @@ use crate::server::response::{
     ApiError, ApiResponse, PaginatedResponse, StoreOptionExt, StoreResultExt,
 };
 
+use crate::auth::RequireUser;
+use crate::server::user::access::require_repo_permission;
+use crate::types::Permission;
+
 use super::auth::{OptionalAuth, check_content_access};
 use super::dto::{
     ArchiveParams, BlameLineResponse, BlameResponse, BlobParams, BlobResponse, CompareParams,
-    CompareResponse, DEFAULT_PAGE_SIZE, DEFAULT_TREE_DEPTH, DiffResponse, ListCommitsParams,
-    MAX_BLOB_SIZE, MAX_PAGE_SIZE, MAX_RAW_BLOB_SIZE, MAX_TREE_DEPTH, ReadmeParams, ReadmeResponse,
-    RefResponse, TreeEntryResponse, TreeParams,
+    CompareResponse, CreateRefRequest, DEFAULT_PAGE_SIZE, DEFAULT_TREE_DEPTH, DiffResponse,
+    ListCommitsParams, MAX_BLOB_SIZE, MAX_PAGE_SIZE, MAX_RAW_BLOB_SIZE, MAX_TREE_DEPTH,
+    ReadmeParams, ReadmeResponse, RefResponse, SetDefaultBranchRequest, TreeEntryResponse,
+    TreeParams, UpdateRefRequest,
 };
 
 const ARCHIVE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 use super::git_ops::{
-    GitError, build_diff, commit_to_response, compute_commit_stats, count_ahead_behind,
-    entry_type_str, find_merge_base, get_blob_at_path, get_commit, get_default_branch, get_tree,
-    get_tree_at_path, is_binary, open_repo, resolve_ref, signature_to_response,
+    GitError, build_diff, commit_to_response, compute_commit_stats, count_ahead_behind, create_ref,
+    delete_ref, entry_type_str, find_merge_base, get_blob_at_path, get_commit, get_default_branch,
+    get_tree, get_tree_at_path, is_binary, open_repo, resolve_ref, set_default_branch,
+    signature_to_response, update_ref,
 };
 
 fn repo_path(state: &AppState, namespace_id: &str, repo_name: &str) -> std::path::PathBuf {
@@ -805,5 +811,137 @@ pub async fn get_readme(
         sha: blob.id().to_string(),
         is_binary: is_bin,
         is_truncated,
+    })))
+}
+
+/// Helper to load repo and check write access for authenticated user
+async fn load_repo_and_check_write_access(
+    state: &Arc<AppState>,
+    auth: &RequireUser,
+    repo_id: &str,
+) -> Result<(crate::types::Repo, git2::Repository), ApiError> {
+    let repo = state
+        .store
+        .get_repo_by_id(repo_id)
+        .api_err("Failed to get repository")?
+        .or_not_found("Repository not found")?;
+
+    require_repo_permission(
+        state.store.as_ref(),
+        &auth.user,
+        &repo,
+        Permission::REPO_WRITE,
+    )?;
+
+    let path = repo_path(state, &repo.namespace_id, &repo.name);
+    let git_repo = open_repo(&path)?;
+
+    Ok((repo, git_repo))
+}
+
+/// POST /repos/{id}/refs - Create a new reference
+pub async fn create_ref_handler(
+    auth: RequireUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<CreateRefRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+
+    let oid = create_ref(
+        &git_repo,
+        &req.ref_type,
+        &req.name,
+        &req.target_sha,
+        req.force,
+    )?;
+
+    let is_default = get_default_branch(&git_repo).as_deref() == Some(&req.name);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::success(RefResponse {
+            name: req.name,
+            ref_type: req.ref_type,
+            commit_sha: oid.to_string(),
+            is_default,
+        })),
+    ))
+}
+
+#[derive(serde::Deserialize)]
+pub struct RefPath {
+    id: String,
+    #[serde(rename = "type")]
+    ref_type: String,
+    name: String,
+}
+
+/// PATCH /repos/{id}/refs/{type}/{name} - Update a reference
+pub async fn update_ref_handler(
+    auth: RequireUser,
+    State(state): State<Arc<AppState>>,
+    Path(path): Path<RefPath>,
+    Json(req): Json<UpdateRefRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &path.id).await?;
+
+    let oid = update_ref(
+        &git_repo,
+        &path.ref_type,
+        &path.name,
+        &req.target_sha,
+        req.expected_sha.as_deref(),
+    )?;
+
+    let is_default = get_default_branch(&git_repo).as_deref() == Some(&path.name);
+
+    Ok(Json(ApiResponse::success(RefResponse {
+        name: path.name,
+        ref_type: path.ref_type,
+        commit_sha: oid.to_string(),
+        is_default,
+    })))
+}
+
+/// DELETE /repos/{id}/refs/{type}/{name} - Delete a reference
+pub async fn delete_ref_handler(
+    auth: RequireUser,
+    State(state): State<Arc<AppState>>,
+    Path(path): Path<RefPath>,
+) -> Result<impl IntoResponse, ApiError> {
+    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &path.id).await?;
+
+    delete_ref(&git_repo, &path.ref_type, &path.name)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// PUT /repos/{id}/default-branch - Set the default branch
+pub async fn set_default_branch_handler(
+    auth: RequireUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<SetDefaultBranchRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+
+    set_default_branch(&git_repo, &req.branch)?;
+
+    let branch_ref = format!("refs/heads/{}", req.branch);
+    let reference = git_repo
+        .find_reference(&branch_ref)
+        .map_err(|e| ApiError::internal(format!("Failed to find branch: {e}")))?;
+
+    let commit_sha = reference
+        .target()
+        .map(|oid| oid.to_string())
+        .unwrap_or_default();
+
+    Ok(Json(ApiResponse::success(RefResponse {
+        name: req.branch,
+        ref_type: "branch".to_string(),
+        commit_sha,
+        is_default: true,
     })))
 }
