@@ -1,4 +1,5 @@
 mod admin;
+mod content;
 pub mod dto;
 mod git;
 pub mod response;

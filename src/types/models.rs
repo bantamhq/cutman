@@ -51,19 +51,32 @@ pub struct Repo {
     pub public: bool,
     pub size_bytes: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_push_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Folder {
+pub struct Tag {
     pub id: String,
     pub namespace_id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Folder {
+    pub id: String,
+    pub namespace_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,9 +108,9 @@ pub struct LfsObject {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RepoWithFolders {
+pub struct RepoWithTags {
     #[serde(flatten)]
     pub repo: Repo,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub folders: Vec<Folder>,
+    pub tags: Vec<Tag>,
 }

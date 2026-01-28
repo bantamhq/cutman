@@ -124,6 +124,7 @@ pub async fn create_repo(
         name: req.name,
         description: req.description,
         public: req.public,
+        folder_id: None,
         size_bytes: 0,
         last_push_at: None,
         created_at: now,

@@ -319,6 +319,7 @@ async fn create_repo_for_push(
         name: repo_name.to_string(),
         description: None,
         public: false,
+        folder_id: None,
         size_bytes: 0,
         last_push_at: None,
         created_at: now,

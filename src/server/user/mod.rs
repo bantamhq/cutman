@@ -1,8 +1,10 @@
 pub mod access;
 mod folders;
 mod namespaces;
-mod repo_folders;
+mod repo_folder;
+mod repo_tags;
 mod repos;
+mod tags;
 
 use std::sync::Arc;
 
@@ -29,18 +31,29 @@ pub fn user_router() -> Router<Arc<AppState>> {
         .route("/repos/{id}", get(repos::get_repo))
         .route("/repos/{id}", patch(repos::update_repo))
         .route("/repos/{id}", delete(repos::delete_repo))
-        // Repo folders
-        .route("/repos/{id}/folders", get(repo_folders::list_repo_folders))
-        .route("/repos/{id}/folders", post(repo_folders::add_repo_folders))
-        .route("/repos/{id}/folders", put(repo_folders::set_repo_folders))
+        // Repo tags (many-to-many)
+        .route("/repos/{id}/tags", get(repo_tags::list_repo_tags))
+        .route("/repos/{id}/tags", post(repo_tags::add_repo_tags))
+        .route("/repos/{id}/tags", put(repo_tags::set_repo_tags))
         .route(
-            "/repos/{id}/folders/{folder_id}",
-            delete(repo_folders::remove_repo_folder),
+            "/repos/{id}/tags/{tag_id}",
+            delete(repo_tags::remove_repo_tag),
         )
-        // Folders
+        // Repo folder (one-to-many)
+        .route("/repos/{id}/folder", get(repo_folder::get_repo_folder))
+        .route("/repos/{id}/folder", put(repo_folder::set_repo_folder))
+        // Tags
+        .route("/tags", get(tags::list_tags))
+        .route("/tags", post(tags::create_tag))
+        .route("/tags/{id}", get(tags::get_tag))
+        .route("/tags/{id}", patch(tags::update_tag))
+        .route("/tags/{id}", delete(tags::delete_tag))
+        // Folders (hierarchical)
         .route("/folders", get(folders::list_folders))
         .route("/folders", post(folders::create_folder))
         .route("/folders/{id}", get(folders::get_folder))
         .route("/folders/{id}", patch(folders::update_folder))
         .route("/folders/{id}", delete(folders::delete_folder))
+        .route("/folders/{id}/children", get(folders::list_folder_children))
+        .route("/folders/{id}/repos", get(folders::list_folder_repos))
 }

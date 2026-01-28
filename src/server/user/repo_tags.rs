@@ -9,34 +9,34 @@ use axum::{
 
 use crate::auth::RequireUser;
 use crate::server::AppState;
-use crate::server::dto::RepoFoldersRequest;
+use crate::server::dto::RepoTagsRequest;
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
 use crate::store::Store;
 use crate::types::{Permission, Repo};
 
 use super::access::require_repo_permission;
 
-fn validate_folders_for_repo(
+fn validate_tags_for_repo(
     store: &dyn Store,
     repo: &Repo,
-    folder_ids: &[String],
+    tag_ids: &[String],
 ) -> Result<(), ApiError> {
-    for folder_id in folder_ids {
-        let folder = store
-            .get_folder_by_id(folder_id)
-            .api_err("Failed to get folder")?
-            .ok_or_else(|| ApiError::not_found(format!("Folder not found: {folder_id}")))?;
+    for tag_id in tag_ids {
+        let tag = store
+            .get_tag_by_id(tag_id)
+            .api_err("Failed to get tag")?
+            .ok_or_else(|| ApiError::not_found(format!("Tag not found: {tag_id}")))?;
 
-        if folder.namespace_id != repo.namespace_id {
+        if tag.namespace_id != repo.namespace_id {
             return Err(ApiError::bad_request(
-                "Folder must belong to the same namespace as the repository",
+                "Tag must belong to the same namespace as the repository",
             ));
         }
     }
     Ok(())
 }
 
-pub async fn list_repo_folders(
+pub async fn list_repo_tags(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -51,18 +51,18 @@ pub async fn list_repo_folders(
 
     require_repo_permission(store, user, &repo, Permission::REPO_READ)?;
 
-    let folders = store
-        .list_repo_folders(&repo.id)
-        .api_err("Failed to list repo folders")?;
+    let tags = store
+        .list_repo_tags(&repo.id)
+        .api_err("Failed to list repo tags")?;
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(tags)))
 }
 
-pub async fn add_repo_folders(
+pub async fn add_repo_tags(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(req): Json<RepoFoldersRequest>,
+    Json(req): Json<RepoTagsRequest>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
@@ -73,26 +73,26 @@ pub async fn add_repo_folders(
         .or_not_found("Repository not found")?;
 
     require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
-    validate_folders_for_repo(store, &repo, &req.folder_ids)?;
+    validate_tags_for_repo(store, &repo, &req.tag_ids)?;
 
-    for folder_id in &req.folder_ids {
+    for tag_id in &req.tag_ids {
         store
-            .add_repo_folder(&repo.id, folder_id)
-            .api_err("Failed to add repo folder")?;
+            .add_repo_tag(&repo.id, tag_id)
+            .api_err("Failed to add repo tag")?;
     }
 
-    let folders = store
-        .list_repo_folders(&repo.id)
-        .api_err("Failed to list repo folders")?;
+    let tags = store
+        .list_repo_tags(&repo.id)
+        .api_err("Failed to list repo tags")?;
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(tags)))
 }
 
-pub async fn set_repo_folders(
+pub async fn set_repo_tags(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(req): Json<RepoFoldersRequest>,
+    Json(req): Json<RepoTagsRequest>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
@@ -103,23 +103,23 @@ pub async fn set_repo_folders(
         .or_not_found("Repository not found")?;
 
     require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
-    validate_folders_for_repo(store, &repo, &req.folder_ids)?;
+    validate_tags_for_repo(store, &repo, &req.tag_ids)?;
 
     store
-        .set_repo_folders(&repo.id, &req.folder_ids)
-        .api_err("Failed to set repo folders")?;
+        .set_repo_tags(&repo.id, &req.tag_ids)
+        .api_err("Failed to set repo tags")?;
 
-    let folders = store
-        .list_repo_folders(&repo.id)
-        .api_err("Failed to list repo folders")?;
+    let tags = store
+        .list_repo_tags(&repo.id)
+        .api_err("Failed to list repo tags")?;
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(tags)))
 }
 
-pub async fn remove_repo_folder(
+pub async fn remove_repo_tag(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
-    Path((id, folder_id)): Path<(String, String)>,
+    Path((id, tag_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
@@ -132,13 +132,13 @@ pub async fn remove_repo_folder(
     require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
 
     store
-        .get_folder_by_id(&folder_id)
-        .api_err("Failed to get folder")?
-        .or_not_found("Folder not found")?;
+        .get_tag_by_id(&tag_id)
+        .api_err("Failed to get tag")?
+        .or_not_found("Tag not found")?;
 
     store
-        .remove_repo_folder(&repo.id, &folder_id)
-        .api_err("Failed to remove repo folder")?;
+        .remove_repo_tag(&repo.id, &tag_id)
+        .api_err("Failed to remove repo tag")?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
 }

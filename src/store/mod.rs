@@ -45,21 +45,49 @@ pub trait Store: Send + Sync {
     fn update_repo_last_push(&self, id: &str) -> Result<()>;
     fn update_repo_size(&self, id: &str, size_bytes: i64) -> Result<()>;
 
-    // Folder operations
+    // Tag operations (many-to-many with repos)
+    fn create_tag(&self, tag: &Tag) -> Result<()>;
+    fn get_tag_by_id(&self, id: &str) -> Result<Option<Tag>>;
+    fn get_tag_by_name(&self, namespace_id: &str, name: &str) -> Result<Option<Tag>>;
+    fn list_tags(&self, namespace_id: &str, cursor: &str, limit: i32) -> Result<Vec<Tag>>;
+    fn update_tag(&self, tag: &Tag) -> Result<()>;
+    fn delete_tag(&self, id: &str) -> Result<bool>;
+    fn count_tag_repos(&self, id: &str) -> Result<i32>;
+
+    // Repo-Tag M2M operations
+    fn add_repo_tag(&self, repo_id: &str, tag_id: &str) -> Result<()>;
+    fn remove_repo_tag(&self, repo_id: &str, tag_id: &str) -> Result<bool>;
+    fn list_repo_tags(&self, repo_id: &str) -> Result<Vec<Tag>>;
+    fn list_tag_repos(&self, tag_id: &str) -> Result<Vec<Repo>>;
+    fn set_repo_tags(&self, repo_id: &str, tag_ids: &[String]) -> Result<()>;
+
+    // Folder operations (hierarchical, one-to-many with repos)
     fn create_folder(&self, folder: &Folder) -> Result<()>;
     fn get_folder_by_id(&self, id: &str) -> Result<Option<Folder>>;
-    fn get_folder_by_name(&self, namespace_id: &str, name: &str) -> Result<Option<Folder>>;
-    fn list_folders(&self, namespace_id: &str, cursor: &str, limit: i32) -> Result<Vec<Folder>>;
+    fn get_folder_by_name(
+        &self,
+        namespace_id: &str,
+        parent_id: Option<&str>,
+        name: &str,
+    ) -> Result<Option<Folder>>;
+    fn list_folders(
+        &self,
+        namespace_id: &str,
+        parent_id: Option<&str>,
+        cursor: &str,
+        limit: i32,
+    ) -> Result<Vec<Folder>>;
+    fn list_folder_children(&self, folder_id: &str) -> Result<Vec<Folder>>;
+    fn list_folder_ancestors(&self, folder_id: &str) -> Result<Vec<Folder>>;
     fn update_folder(&self, folder: &Folder) -> Result<()>;
-    fn delete_folder(&self, id: &str) -> Result<bool>;
-    fn count_folder_repos(&self, id: &str) -> Result<i32>;
+    fn move_folder(&self, folder_id: &str, new_parent_id: Option<&str>) -> Result<()>;
+    fn delete_folder(&self, id: &str, recursive: bool) -> Result<bool>;
+    fn get_folder_path(&self, folder_id: &str) -> Result<String>;
+    fn count_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<i32>;
 
-    // Repo-Folder M2M operations
-    fn add_repo_folder(&self, repo_id: &str, folder_id: &str) -> Result<()>;
-    fn remove_repo_folder(&self, repo_id: &str, folder_id: &str) -> Result<bool>;
-    fn list_repo_folders(&self, repo_id: &str) -> Result<Vec<Folder>>;
-    fn list_folder_repos(&self, folder_id: &str) -> Result<Vec<Repo>>;
-    fn set_repo_folders(&self, repo_id: &str, folder_ids: &[String]) -> Result<()>;
+    // Repo-Folder operations (one-to-many)
+    fn set_repo_folder(&self, repo_id: &str, folder_id: Option<&str>) -> Result<()>;
+    fn list_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<Vec<Repo>>;
 
     // Namespace grant operations
     fn upsert_namespace_grant(&self, grant: &NamespaceGrant) -> Result<()>;

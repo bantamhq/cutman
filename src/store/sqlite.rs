@@ -388,14 +388,15 @@ impl Store for SqliteStore {
 
     fn create_repo(&self, repo: &Repo) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO repos (id, namespace_id, name, description, public, size_bytes, last_push_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO repos (id, namespace_id, name, description, public, folder_id, size_bytes, last_push_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 repo.id,
                 repo.namespace_id,
                 repo.name,
                 repo.description,
                 repo.public,
+                repo.folder_id,
                 repo.size_bytes,
                 repo.last_push_at.as_ref().map(format_datetime),
                 format_datetime(&repo.created_at),
@@ -408,7 +409,7 @@ impl Store for SqliteStore {
     fn get_repo(&self, namespace_id: &str, name: &str) -> Result<Option<Repo>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, namespace_id, name, description, public, size_bytes, last_push_at, created_at, updated_at
+            "SELECT id, namespace_id, name, description, public, folder_id, size_bytes, last_push_at, created_at, updated_at
              FROM repos WHERE namespace_id = ?1 AND name = ?2",
             params![namespace_id, name],
             |row| {
@@ -418,10 +419,11 @@ impl Store for SqliteStore {
                     name: row.get(2)?,
                     description: row.get(3)?,
                     public: row.get(4)?,
-                    size_bytes: row.get(5)?,
-                    last_push_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                    created_at: parse_datetime(&row.get::<_, String>(7)?),
-                    updated_at: parse_datetime(&row.get::<_, String>(8)?),
+                    folder_id: row.get(5)?,
+                    size_bytes: row.get(6)?,
+                    last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                    created_at: parse_datetime(&row.get::<_, String>(8)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(9)?),
                 })
             },
         )
@@ -432,7 +434,7 @@ impl Store for SqliteStore {
     fn get_repo_by_id(&self, id: &str) -> Result<Option<Repo>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, namespace_id, name, description, public, size_bytes, last_push_at, created_at, updated_at
+            "SELECT id, namespace_id, name, description, public, folder_id, size_bytes, last_push_at, created_at, updated_at
              FROM repos WHERE id = ?1",
             params![id],
             |row| {
@@ -442,10 +444,11 @@ impl Store for SqliteStore {
                     name: row.get(2)?,
                     description: row.get(3)?,
                     public: row.get(4)?,
-                    size_bytes: row.get(5)?,
-                    last_push_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                    created_at: parse_datetime(&row.get::<_, String>(7)?),
-                    updated_at: parse_datetime(&row.get::<_, String>(8)?),
+                    folder_id: row.get(5)?,
+                    size_bytes: row.get(6)?,
+                    last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                    created_at: parse_datetime(&row.get::<_, String>(8)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(9)?),
                 })
             },
         )
@@ -456,7 +459,7 @@ impl Store for SqliteStore {
     fn list_repos(&self, namespace_id: &str, cursor: &str, limit: i32) -> Result<Vec<Repo>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT id, namespace_id, name, description, public, size_bytes, last_push_at, created_at, updated_at
+            "SELECT id, namespace_id, name, description, public, folder_id, size_bytes, last_push_at, created_at, updated_at
              FROM repos WHERE namespace_id = ?1 AND name > ?2 ORDER BY name LIMIT ?3",
         )?;
 
@@ -467,10 +470,11 @@ impl Store for SqliteStore {
                 name: row.get(2)?,
                 description: row.get(3)?,
                 public: row.get(4)?,
-                size_bytes: row.get(5)?,
-                last_push_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                created_at: parse_datetime(&row.get::<_, String>(7)?),
-                updated_at: parse_datetime(&row.get::<_, String>(8)?),
+                folder_id: row.get(5)?,
+                size_bytes: row.get(6)?,
+                last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                created_at: parse_datetime(&row.get::<_, String>(8)?),
+                updated_at: parse_datetime(&row.get::<_, String>(9)?),
             })
         })?;
 
@@ -527,18 +531,207 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    // Folder operations
+    fn create_tag(&self, tag: &Tag) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO tags (id, namespace_id, name, color, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                tag.id,
+                tag.namespace_id,
+                tag.name,
+                tag.color,
+                format_datetime(&tag.created_at),
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn get_tag_by_id(&self, id: &str) -> Result<Option<Tag>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT id, namespace_id, name, color, created_at FROM tags WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(Tag {
+                    id: row.get(0)?,
+                    namespace_id: row.get(1)?,
+                    name: row.get(2)?,
+                    color: row.get(3)?,
+                    created_at: parse_datetime(&row.get::<_, String>(4)?),
+                })
+            },
+        )
+        .optional()
+        .map_err(Error::from)
+    }
+
+    fn get_tag_by_name(&self, namespace_id: &str, name: &str) -> Result<Option<Tag>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT id, namespace_id, name, color, created_at
+             FROM tags WHERE namespace_id = ?1 AND name = ?2",
+            params![namespace_id, name],
+            |row| {
+                Ok(Tag {
+                    id: row.get(0)?,
+                    namespace_id: row.get(1)?,
+                    name: row.get(2)?,
+                    color: row.get(3)?,
+                    created_at: parse_datetime(&row.get::<_, String>(4)?),
+                })
+            },
+        )
+        .optional()
+        .map_err(Error::from)
+    }
+
+    fn list_tags(&self, namespace_id: &str, cursor: &str, limit: i32) -> Result<Vec<Tag>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, namespace_id, name, color, created_at
+             FROM tags WHERE namespace_id = ?1 AND name > ?2 ORDER BY name LIMIT ?3",
+        )?;
+
+        let rows = stmt.query_map(params![namespace_id, cursor, limit], |row| {
+            Ok(Tag {
+                id: row.get(0)?,
+                namespace_id: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                created_at: parse_datetime(&row.get::<_, String>(4)?),
+            })
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Error::from)
+    }
+
+    fn update_tag(&self, tag: &Tag) -> Result<()> {
+        let rows = self.conn().execute(
+            "UPDATE tags SET name = ?1, color = ?2 WHERE id = ?3",
+            params![tag.name, tag.color, tag.id],
+        )?;
+
+        if rows == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
+    }
+
+    fn delete_tag(&self, id: &str) -> Result<bool> {
+        let rows = self
+            .conn()
+            .execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+        Ok(rows > 0)
+    }
+
+    fn count_tag_repos(&self, id: &str) -> Result<i32> {
+        let conn = self.conn();
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM repo_tags WHERE tag_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    fn add_repo_tag(&self, repo_id: &str, tag_id: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT OR IGNORE INTO repo_tags (repo_id, tag_id) VALUES (?1, ?2)",
+            params![repo_id, tag_id],
+        )?;
+        Ok(())
+    }
+
+    fn remove_repo_tag(&self, repo_id: &str, tag_id: &str) -> Result<bool> {
+        let rows = self.conn().execute(
+            "DELETE FROM repo_tags WHERE repo_id = ?1 AND tag_id = ?2",
+            params![repo_id, tag_id],
+        )?;
+        Ok(rows > 0)
+    }
+
+    fn list_repo_tags(&self, repo_id: &str) -> Result<Vec<Tag>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT t.id, t.namespace_id, t.name, t.color, t.created_at
+             FROM tags t
+             JOIN repo_tags rt ON t.id = rt.tag_id
+             WHERE rt.repo_id = ?1
+             ORDER BY t.name",
+        )?;
+
+        let rows = stmt.query_map(params![repo_id], |row| {
+            Ok(Tag {
+                id: row.get(0)?,
+                namespace_id: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+                created_at: parse_datetime(&row.get::<_, String>(4)?),
+            })
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Error::from)
+    }
+
+    fn list_tag_repos(&self, tag_id: &str) -> Result<Vec<Repo>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
+             FROM repos r
+             JOIN repo_tags rt ON r.id = rt.repo_id
+             WHERE rt.tag_id = ?1
+             ORDER BY r.name",
+        )?;
+
+        let rows = stmt.query_map(params![tag_id], |row| {
+            Ok(Repo {
+                id: row.get(0)?,
+                namespace_id: row.get(1)?,
+                name: row.get(2)?,
+                description: row.get(3)?,
+                public: row.get(4)?,
+                folder_id: row.get(5)?,
+                size_bytes: row.get(6)?,
+                last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                created_at: parse_datetime(&row.get::<_, String>(8)?),
+                updated_at: parse_datetime(&row.get::<_, String>(9)?),
+            })
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Error::from)
+    }
+
+    fn set_repo_tags(&self, repo_id: &str, tag_ids: &[String]) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+
+        tx.execute("DELETE FROM repo_tags WHERE repo_id = ?1", params![repo_id])?;
+
+        for tag_id in tag_ids {
+            tx.execute(
+                "INSERT INTO repo_tags (repo_id, tag_id) VALUES (?1, ?2)",
+                params![repo_id, tag_id],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
 
     fn create_folder(&self, folder: &Folder) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO folders (id, namespace_id, name, color, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO folders (id, namespace_id, parent_id, name, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 folder.id,
                 folder.namespace_id,
+                folder.parent_id,
                 folder.name,
-                folder.color,
                 format_datetime(&folder.created_at),
+                format_datetime(&folder.updated_at),
             ],
         )?;
         Ok(())
@@ -547,15 +740,16 @@ impl Store for SqliteStore {
     fn get_folder_by_id(&self, id: &str) -> Result<Option<Folder>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, namespace_id, name, color, created_at FROM folders WHERE id = ?1",
+            "SELECT id, namespace_id, parent_id, name, created_at, updated_at FROM folders WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Folder {
                     id: row.get(0)?,
                     namespace_id: row.get(1)?,
-                    name: row.get(2)?,
-                    color: row.get(3)?,
+                    parent_id: row.get(2)?,
+                    name: row.get(3)?,
                     created_at: parse_datetime(&row.get::<_, String>(4)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(5)?),
                 })
             },
         )
@@ -563,40 +757,147 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn get_folder_by_name(&self, namespace_id: &str, name: &str) -> Result<Option<Folder>> {
+    fn get_folder_by_name(
+        &self,
+        namespace_id: &str,
+        parent_id: Option<&str>,
+        name: &str,
+    ) -> Result<Option<Folder>> {
         let conn = self.conn();
-        conn.query_row(
-            "SELECT id, namespace_id, name, color, created_at
-             FROM folders WHERE namespace_id = ?1 AND name = ?2",
-            params![namespace_id, name],
-            |row| {
-                Ok(Folder {
-                    id: row.get(0)?,
-                    namespace_id: row.get(1)?,
-                    name: row.get(2)?,
-                    color: row.get(3)?,
-                    created_at: parse_datetime(&row.get::<_, String>(4)?),
-                })
-            },
-        )
-        .optional()
-        .map_err(Error::from)
+        let result = match parent_id {
+            Some(pid) => conn.query_row(
+                "SELECT id, namespace_id, parent_id, name, created_at, updated_at
+                 FROM folders WHERE namespace_id = ?1 AND parent_id = ?2 AND name = ?3",
+                params![namespace_id, pid, name],
+                |row| {
+                    Ok(Folder {
+                        id: row.get(0)?,
+                        namespace_id: row.get(1)?,
+                        parent_id: row.get(2)?,
+                        name: row.get(3)?,
+                        created_at: parse_datetime(&row.get::<_, String>(4)?),
+                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
+                    })
+                },
+            ),
+            None => conn.query_row(
+                "SELECT id, namespace_id, parent_id, name, created_at, updated_at
+                 FROM folders WHERE namespace_id = ?1 AND parent_id IS NULL AND name = ?2",
+                params![namespace_id, name],
+                |row| {
+                    Ok(Folder {
+                        id: row.get(0)?,
+                        namespace_id: row.get(1)?,
+                        parent_id: row.get(2)?,
+                        name: row.get(3)?,
+                        created_at: parse_datetime(&row.get::<_, String>(4)?),
+                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
+                    })
+                },
+            ),
+        };
+        result.optional().map_err(Error::from)
     }
 
-    fn list_folders(&self, namespace_id: &str, cursor: &str, limit: i32) -> Result<Vec<Folder>> {
+    fn list_folders(
+        &self,
+        namespace_id: &str,
+        parent_id: Option<&str>,
+        cursor: &str,
+        limit: i32,
+    ) -> Result<Vec<Folder>> {
+        let conn = self.conn();
+        let mut folders = Vec::new();
+
+        match parent_id {
+            Some(pid) => {
+                let mut stmt = conn.prepare(
+                    "SELECT id, namespace_id, parent_id, name, created_at, updated_at
+                     FROM folders WHERE namespace_id = ?1 AND parent_id = ?2 AND name > ?3 ORDER BY name LIMIT ?4",
+                )?;
+                let rows = stmt.query_map(params![namespace_id, pid, cursor, limit], |row| {
+                    Ok(Folder {
+                        id: row.get(0)?,
+                        namespace_id: row.get(1)?,
+                        parent_id: row.get(2)?,
+                        name: row.get(3)?,
+                        created_at: parse_datetime(&row.get::<_, String>(4)?),
+                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
+                    })
+                })?;
+                for row in rows {
+                    folders.push(row?);
+                }
+            }
+            None => {
+                let mut stmt = conn.prepare(
+                    "SELECT id, namespace_id, parent_id, name, created_at, updated_at
+                     FROM folders WHERE namespace_id = ?1 AND parent_id IS NULL AND name > ?2 ORDER BY name LIMIT ?3",
+                )?;
+                let rows = stmt.query_map(params![namespace_id, cursor, limit], |row| {
+                    Ok(Folder {
+                        id: row.get(0)?,
+                        namespace_id: row.get(1)?,
+                        parent_id: row.get(2)?,
+                        name: row.get(3)?,
+                        created_at: parse_datetime(&row.get::<_, String>(4)?),
+                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
+                    })
+                })?;
+                for row in rows {
+                    folders.push(row?);
+                }
+            }
+        }
+
+        Ok(folders)
+    }
+
+    fn list_folder_children(&self, folder_id: &str) -> Result<Vec<Folder>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT id, namespace_id, name, color, created_at
-             FROM folders WHERE namespace_id = ?1 AND name > ?2 ORDER BY name LIMIT ?3",
+            "SELECT id, namespace_id, parent_id, name, created_at, updated_at
+             FROM folders WHERE parent_id = ?1 ORDER BY name",
         )?;
 
-        let rows = stmt.query_map(params![namespace_id, cursor, limit], |row| {
+        let rows = stmt.query_map(params![folder_id], |row| {
             Ok(Folder {
                 id: row.get(0)?,
                 namespace_id: row.get(1)?,
-                name: row.get(2)?,
-                color: row.get(3)?,
+                parent_id: row.get(2)?,
+                name: row.get(3)?,
                 created_at: parse_datetime(&row.get::<_, String>(4)?),
+                updated_at: parse_datetime(&row.get::<_, String>(5)?),
+            })
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Error::from)
+    }
+
+    fn list_folder_ancestors(&self, folder_id: &str) -> Result<Vec<Folder>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE ancestors AS (
+                SELECT id, namespace_id, parent_id, name, created_at, updated_at, 0 as depth
+                FROM folders WHERE id = ?1
+                UNION ALL
+                SELECT f.id, f.namespace_id, f.parent_id, f.name, f.created_at, f.updated_at, a.depth + 1
+                FROM folders f
+                JOIN ancestors a ON f.id = a.parent_id
+            )
+            SELECT id, namespace_id, parent_id, name, created_at, updated_at
+            FROM ancestors WHERE depth > 0 ORDER BY depth DESC",
+        )?;
+
+        let rows = stmt.query_map(params![folder_id], |row| {
+            Ok(Folder {
+                id: row.get(0)?,
+                namespace_id: row.get(1)?,
+                parent_id: row.get(2)?,
+                name: row.get(3)?,
+                created_at: parse_datetime(&row.get::<_, String>(4)?),
+                updated_at: parse_datetime(&row.get::<_, String>(5)?),
             })
         })?;
 
@@ -606,8 +907,13 @@ impl Store for SqliteStore {
 
     fn update_folder(&self, folder: &Folder) -> Result<()> {
         let rows = self.conn().execute(
-            "UPDATE folders SET name = ?1, color = ?2 WHERE id = ?3",
-            params![folder.name, folder.color, folder.id],
+            "UPDATE folders SET name = ?1, parent_id = ?2, updated_at = ?3 WHERE id = ?4",
+            params![
+                folder.name,
+                folder.parent_id,
+                format_datetime(&Utc::now()),
+                folder.id
+            ],
         )?;
 
         if rows == 0 {
@@ -616,111 +922,142 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn delete_folder(&self, id: &str) -> Result<bool> {
-        let rows = self
-            .conn()
-            .execute("DELETE FROM folders WHERE id = ?1", params![id])?;
-        Ok(rows > 0)
+    fn move_folder(&self, folder_id: &str, new_parent_id: Option<&str>) -> Result<()> {
+        let rows = self.conn().execute(
+            "UPDATE folders SET parent_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new_parent_id, format_datetime(&Utc::now()), folder_id],
+        )?;
+
+        if rows == 0 {
+            return Err(Error::NotFound);
+        }
+        Ok(())
     }
 
-    fn count_folder_repos(&self, id: &str) -> Result<i32> {
+    fn delete_folder(&self, id: &str, recursive: bool) -> Result<bool> {
+        if recursive {
+            let rows = self.conn().execute(
+                "WITH RECURSIVE descendants AS (
+                    SELECT id FROM folders WHERE id = ?1
+                    UNION ALL
+                    SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id
+                )
+                DELETE FROM folders WHERE id IN (SELECT id FROM descendants)",
+                params![id],
+            )?;
+            Ok(rows > 0)
+        } else {
+            let rows = self
+                .conn()
+                .execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+            Ok(rows > 0)
+        }
+    }
+
+    fn get_folder_path(&self, folder_id: &str) -> Result<String> {
+        let ancestors = self.list_folder_ancestors(folder_id)?;
+        let folder = self.get_folder_by_id(folder_id)?;
+
+        match folder {
+            Some(f) => {
+                let mut path_parts: Vec<&str> = ancestors.iter().map(|a| a.name.as_str()).collect();
+                path_parts.push(&f.name);
+                Ok(path_parts.join("/"))
+            }
+            None => Err(Error::NotFound),
+        }
+    }
+
+    fn count_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<i32> {
         let conn = self.conn();
-        let count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM repo_folders WHERE folder_id = ?1",
-            params![id],
-            |row| row.get(0),
-        )?;
+        let count: i32 = if recursive {
+            conn.query_row(
+                "WITH RECURSIVE descendants AS (
+                    SELECT id FROM folders WHERE id = ?1
+                    UNION ALL
+                    SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id
+                )
+                SELECT COUNT(*) FROM repos WHERE folder_id IN (SELECT id FROM descendants)",
+                params![folder_id],
+                |row| row.get(0),
+            )?
+        } else {
+            conn.query_row(
+                "SELECT COUNT(*) FROM repos WHERE folder_id = ?1",
+                params![folder_id],
+                |row| row.get(0),
+            )?
+        };
         Ok(count)
     }
 
-    // Repo-Folder M2M operations
-
-    fn add_repo_folder(&self, repo_id: &str, folder_id: &str) -> Result<()> {
-        self.conn().execute(
-            "INSERT OR IGNORE INTO repo_folders (repo_id, folder_id) VALUES (?1, ?2)",
-            params![repo_id, folder_id],
-        )?;
-        Ok(())
-    }
-
-    fn remove_repo_folder(&self, repo_id: &str, folder_id: &str) -> Result<bool> {
+    fn set_repo_folder(&self, repo_id: &str, folder_id: Option<&str>) -> Result<()> {
         let rows = self.conn().execute(
-            "DELETE FROM repo_folders WHERE repo_id = ?1 AND folder_id = ?2",
-            params![repo_id, folder_id],
-        )?;
-        Ok(rows > 0)
-    }
-
-    fn list_repo_folders(&self, repo_id: &str) -> Result<Vec<Folder>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT f.id, f.namespace_id, f.name, f.color, f.created_at
-             FROM folders f
-             JOIN repo_folders rf ON f.id = rf.folder_id
-             WHERE rf.repo_id = ?1
-             ORDER BY f.name",
+            "UPDATE repos SET folder_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![folder_id, format_datetime(&Utc::now()), repo_id],
         )?;
 
-        let rows = stmt.query_map(params![repo_id], |row| {
-            Ok(Folder {
-                id: row.get(0)?,
-                namespace_id: row.get(1)?,
-                name: row.get(2)?,
-                color: row.get(3)?,
-                created_at: parse_datetime(&row.get::<_, String>(4)?),
-            })
-        })?;
-
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(Error::from)
-    }
-
-    fn list_folder_repos(&self, folder_id: &str) -> Result<Vec<Repo>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
-             FROM repos r
-             JOIN repo_folders rf ON r.id = rf.repo_id
-             WHERE rf.folder_id = ?1
-             ORDER BY r.name",
-        )?;
-
-        let rows = stmt.query_map(params![folder_id], |row| {
-            Ok(Repo {
-                id: row.get(0)?,
-                namespace_id: row.get(1)?,
-                name: row.get(2)?,
-                description: row.get(3)?,
-                public: row.get(4)?,
-                size_bytes: row.get(5)?,
-                last_push_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                created_at: parse_datetime(&row.get::<_, String>(7)?),
-                updated_at: parse_datetime(&row.get::<_, String>(8)?),
-            })
-        })?;
-
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(Error::from)
-    }
-
-    fn set_repo_folders(&self, repo_id: &str, folder_ids: &[String]) -> Result<()> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-
-        tx.execute(
-            "DELETE FROM repo_folders WHERE repo_id = ?1",
-            params![repo_id],
-        )?;
-
-        for folder_id in folder_ids {
-            tx.execute(
-                "INSERT INTO repo_folders (repo_id, folder_id) VALUES (?1, ?2)",
-                params![repo_id, folder_id],
-            )?;
+        if rows == 0 {
+            return Err(Error::NotFound);
         }
-
-        tx.commit()?;
         Ok(())
+    }
+
+    fn list_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<Vec<Repo>> {
+        let conn = self.conn();
+
+        if recursive {
+            let mut stmt = conn.prepare(
+                "WITH RECURSIVE descendants AS (
+                    SELECT id FROM folders WHERE id = ?1
+                    UNION ALL
+                    SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id
+                )
+                SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
+                FROM repos r WHERE r.folder_id IN (SELECT id FROM descendants) ORDER BY r.name",
+            )?;
+
+            let rows = stmt.query_map(params![folder_id], |row| {
+                Ok(Repo {
+                    id: row.get(0)?,
+                    namespace_id: row.get(1)?,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    public: row.get(4)?,
+                    folder_id: row.get(5)?,
+                    size_bytes: row.get(6)?,
+                    last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                    created_at: parse_datetime(&row.get::<_, String>(8)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(9)?),
+                })
+            })?;
+
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Error::from)
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT id, namespace_id, name, description, public, folder_id, size_bytes, last_push_at, created_at, updated_at
+                 FROM repos WHERE folder_id = ?1 ORDER BY name",
+            )?;
+
+            let rows = stmt.query_map(params![folder_id], |row| {
+                Ok(Repo {
+                    id: row.get(0)?,
+                    namespace_id: row.get(1)?,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    public: row.get(4)?,
+                    folder_id: row.get(5)?,
+                    size_bytes: row.get(6)?,
+                    last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                    created_at: parse_datetime(&row.get::<_, String>(8)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(9)?),
+                })
+            })?;
+
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Error::from)
+        }
     }
 
     // Namespace grant operations
@@ -918,7 +1255,7 @@ impl Store for SqliteStore {
     fn list_user_repos_with_grants(&self, user_id: &str, namespace_id: &str) -> Result<Vec<Repo>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
+            "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
              FROM repos r
              JOIN user_repo_grants g ON r.id = g.repo_id
              WHERE g.user_id = ?1 AND r.namespace_id = ?2
@@ -932,10 +1269,11 @@ impl Store for SqliteStore {
                 name: row.get(2)?,
                 description: row.get(3)?,
                 public: row.get(4)?,
-                size_bytes: row.get(5)?,
-                last_push_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                created_at: parse_datetime(&row.get::<_, String>(7)?),
-                updated_at: parse_datetime(&row.get::<_, String>(8)?),
+                folder_id: row.get(5)?,
+                size_bytes: row.get(6)?,
+                last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                created_at: parse_datetime(&row.get::<_, String>(8)?),
+                updated_at: parse_datetime(&row.get::<_, String>(9)?),
             })
         })?;
 
@@ -1068,8 +1406,9 @@ mod tests {
         assert!(tables.contains(&"users".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
         assert!(tables.contains(&"repos".to_string()));
+        assert!(tables.contains(&"tags".to_string()));
+        assert!(tables.contains(&"repo_tags".to_string()));
         assert!(tables.contains(&"folders".to_string()));
-        assert!(tables.contains(&"repo_folders".to_string()));
         assert!(tables.contains(&"user_namespace_grants".to_string()));
         assert!(tables.contains(&"user_repo_grants".to_string()));
         assert!(tables.contains(&"lfs_objects".to_string()));

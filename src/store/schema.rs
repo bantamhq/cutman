@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS repos (
     -- Visibility
     public INTEGER DEFAULT 0,  -- If 1, anonymous read access allowed
 
+    -- Folder assignment (one-to-many, repo belongs to one folder)
+    folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
+
     -- Stats
     size_bytes INTEGER DEFAULT 0,
     last_push_at TEXT,
@@ -78,8 +81,8 @@ CREATE TABLE IF NOT EXISTS tokens (
     last_used_at TEXT
 );
 
--- Folders for organizing repos (flat, no nesting)
-CREATE TABLE IF NOT EXISTS folders (
+-- Tags for labeling repos (many-to-many)
+CREATE TABLE IF NOT EXISTS tags (
     id TEXT PRIMARY KEY,
     namespace_id TEXT NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -89,11 +92,23 @@ CREATE TABLE IF NOT EXISTS folders (
     UNIQUE(namespace_id, name)
 );
 
--- Many-to-many relationship between repos and folders
-CREATE TABLE IF NOT EXISTS repo_folders (
+-- Many-to-many relationship between repos and tags
+CREATE TABLE IF NOT EXISTS repo_tags (
     repo_id TEXT REFERENCES repos(id) ON DELETE CASCADE,
-    folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
-    PRIMARY KEY (repo_id, folder_id)
+    tag_id TEXT REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (repo_id, tag_id)
+);
+
+-- Folders for organizing repos (hierarchical, one-to-many)
+CREATE TABLE IF NOT EXISTS folders (
+    id TEXT PRIMARY KEY,
+    namespace_id TEXT NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
+    parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+
+    UNIQUE(namespace_id, parent_id, name)
 );
 
 -- LFS objects
@@ -107,9 +122,12 @@ CREATE TABLE IF NOT EXISTS lfs_objects (
 
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_repos_namespace ON repos(namespace_id);
+CREATE INDEX IF NOT EXISTS idx_repos_folder ON repos(folder_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_lookup ON tokens(token_lookup);
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_tags_namespace ON tags(namespace_id);
 CREATE INDEX IF NOT EXISTS idx_folders_namespace ON folders(namespace_id);
+CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
 CREATE INDEX IF NOT EXISTS idx_lfs_objects_repo ON lfs_objects(repo_id);
 CREATE INDEX IF NOT EXISTS idx_namespace_grants_user ON user_namespace_grants(user_id);
 CREATE INDEX IF NOT EXISTS idx_repo_grants_user ON user_repo_grants(user_id);

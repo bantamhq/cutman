@@ -111,10 +111,27 @@ pub struct UpdateRepoRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CreateFolderRequest {
+pub struct CreateTagRequest {
     pub name: String,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub namespace: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTagRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateFolderRequest {
+    pub name: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
     #[serde(default)]
     pub namespace: Option<String>,
 }
@@ -124,7 +141,7 @@ pub struct UpdateFolderRequest {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
-    pub color: Option<String>,
+    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,14 +153,30 @@ pub struct UpdateNamespaceRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RepoFoldersRequest {
-    pub folder_ids: Vec<String>,
+pub struct RepoTagsRequest {
+    pub tag_ids: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct DeleteTagParams {
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ListTagsParams {
+    #[serde(default)]
+    pub namespace: Option<String>,
+    #[serde(default)]
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct DeleteFolderParams {
     #[serde(default)]
     pub force: Option<bool>,
+    #[serde(default)]
+    pub recursive: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -151,7 +184,15 @@ pub struct ListFoldersParams {
     #[serde(default)]
     pub namespace: Option<String>,
     #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
     pub cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetRepoFolderRequest {
+    #[serde(default)]
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
