@@ -10,9 +10,11 @@ use uuid::Uuid;
 
 use cutman::auth::TokenGenerator;
 use cutman::cli::{
-    AdminCommands, NamespaceCommands, PermissionCommands, TokenCommands, UserCommands, run_info,
-    run_namespace_add, run_namespace_remove, run_permission_grant, run_permission_revoke,
-    run_token_create, run_token_revoke, run_user_add, run_user_remove,
+    AdminCommands, AuthCommands, NamespaceCommands, PermissionCommands, RepoCommands, TagCommands,
+    TokenCommands, UserCommands, run_auth_login, run_info, run_namespace_add, run_namespace_remove,
+    run_new, run_permission_grant, run_permission_revoke, run_repo_clone, run_repo_delete,
+    run_repo_tag, run_tag_create, run_tag_delete, run_token_create, run_token_revoke, run_user_add,
+    run_user_remove,
 };
 use cutman::config::ServerConfig;
 use cutman::server::{AppState, create_router};
@@ -56,7 +58,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Administrative commands
+    /// Administrative commands (requires direct database access)
     Admin {
         #[command(subcommand)]
         command: AdminCommands,
@@ -80,6 +82,38 @@ enum Commands {
         /// Used for generating LFS action URLs. If not set, URLs are derived from request headers.
         #[arg(long)]
         public_base_url: Option<String>,
+    },
+
+    /// Authentication commands
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommands,
+    },
+
+    /// Create a new repository
+    New {
+        /// Repository name (uses current folder name if omitted)
+        name: Option<String>,
+
+        /// Namespace to create repo in (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// Git remote name (default: origin)
+        #[arg(short, long, default_value = "origin")]
+        remote: String,
+    },
+
+    /// Repository management
+    Repo {
+        #[command(subcommand)]
+        command: RepoCommands,
+    },
+
+    /// Tag management
+    Tag {
+        #[command(subcommand)]
+        command: TagCommands,
     },
 }
 
@@ -188,8 +222,7 @@ fn create_default_user_prompt(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("cutman=info".parse()?))
         .init();
@@ -326,44 +359,125 @@ async fn main() -> anyhow::Result<()> {
             data_dir,
             public_base_url,
         } => {
-            let config = ServerConfig {
-                host,
-                port,
-                data_dir: data_dir.into(),
-                public_base_url,
-            };
-
-            let token_file = config.data_dir.join(".admin_token");
-            if !token_file.exists() {
-                bail!(
-                    "Server not initialized. Run 'cutman admin init' first to create the database and admin token."
-                );
-            }
-
-            let store = SqliteStore::new(config.db_path())?;
-            if !store.has_admin_token()? {
-                bail!(
-                    "Server not initialized. Run 'cutman admin init' first to create the database and admin token."
-                );
-            }
-
-            info!("Admin token available at {}", token_file.display());
-
-            let state = Arc::new(AppState {
-                store: Arc::new(store),
-                data_dir: config.data_dir.clone(),
-                public_base_url: config.public_base_url.clone(),
-            });
-
-            let app = create_router(state);
-            let addr = config.socket_addr()?;
-
-            info!("Starting server on {}", addr);
-
-            let listener = tokio::net::TcpListener::bind(addr).await?;
-            axum::serve(listener, app).await?;
+            run_server(host, port, data_dir, public_base_url)?;
         }
+        Commands::Auth { command } => match command {
+            AuthCommands::Login {
+                server,
+                token,
+                non_interactive,
+            } => {
+                run_auth_login(server, token, non_interactive)?;
+            }
+        },
+        Commands::New {
+            name,
+            namespace,
+            remote,
+        } => {
+            run_new(name, namespace, remote)?;
+        }
+        Commands::Repo { command } => match command {
+            RepoCommands::Delete {
+                repo_id,
+                namespace,
+                list,
+                non_interactive,
+                json,
+                yes,
+            } => {
+                run_repo_delete(repo_id, namespace, list, non_interactive, json, yes)?;
+            }
+            RepoCommands::Clone {
+                repo,
+                list,
+                non_interactive,
+                json,
+            } => {
+                run_repo_clone(repo, list, non_interactive, json)?;
+            }
+            RepoCommands::Tag {
+                repo_id,
+                namespace,
+                tags,
+                list,
+                non_interactive,
+                json,
+            } => {
+                run_repo_tag(repo_id, namespace, tags, list, non_interactive, json)?;
+            }
+        },
+        Commands::Tag { command } => match command {
+            TagCommands::Create {
+                name,
+                color,
+                namespace,
+                list,
+                non_interactive,
+                json,
+            } => {
+                run_tag_create(name, color, namespace, list, non_interactive, json)?;
+            }
+            TagCommands::Delete {
+                tag_id,
+                namespace,
+                list,
+                non_interactive,
+                json,
+                yes,
+                force,
+            } => {
+                run_tag_delete(tag_id, namespace, list, non_interactive, json, yes, force)?;
+            }
+        },
     }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn run_server(
+    host: String,
+    port: u16,
+    data_dir: String,
+    public_base_url: Option<String>,
+) -> anyhow::Result<()> {
+    let config = ServerConfig {
+        host,
+        port,
+        data_dir: data_dir.into(),
+        public_base_url,
+    };
+
+    let token_file = config.data_dir.join(".admin_token");
+    if !token_file.exists() {
+        bail!(
+            "Server not initialized. Run 'cutman admin init' first to create the database and admin token."
+        );
+    }
+
+    let store = SqliteStore::new(config.db_path())?;
+    if !store.has_admin_token()? {
+        bail!(
+            "Server not initialized. Run 'cutman admin init' first to create the database and admin token."
+        );
+    }
+
+    info!("Admin token available at {}", token_file.display());
+
+    let state = Arc::new(AppState {
+        store: Arc::new(store),
+        data_dir: config.data_dir.clone(),
+        public_base_url: config.public_base_url.clone(),
+    });
+
+    let app = create_router(state);
+    let addr = config.socket_addr()?;
+
+    info!("Starting server on {}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

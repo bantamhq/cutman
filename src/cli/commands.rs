@@ -280,3 +280,158 @@ pub enum PermissionCommands {
         yes: bool,
     },
 }
+
+#[derive(Subcommand)]
+pub enum AuthCommands {
+    /// Configure server URL and authentication token
+    Login {
+        /// Server URL
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Authentication token
+        #[arg(long)]
+        token: Option<String>,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum RepoCommands {
+    /// Delete a repository
+    Delete {
+        /// Repository ID to delete
+        #[arg(long)]
+        repo_id: Option<String>,
+
+        /// Namespace filter (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// List repos instead of deleting
+        #[arg(long)]
+        list: bool,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Skip confirmation
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+
+    /// Clone a repository
+    Clone {
+        /// Repository to clone (format: namespace/repo or repo ID)
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// List repos instead of cloning
+        #[arg(long)]
+        list: bool,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set tags on a repository
+    Tag {
+        /// Repository ID
+        #[arg(long)]
+        repo_id: Option<String>,
+
+        /// Namespace filter
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// Tag IDs to set (comma-separated, replaces all existing tags)
+        #[arg(long)]
+        tags: Option<String>,
+
+        /// List available tags instead of setting
+        #[arg(long)]
+        list: bool,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TagCommands {
+    /// Create a new tag
+    Create {
+        /// Tag name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Tag color (hex, e.g., "ff0000")
+        #[arg(long)]
+        color: Option<String>,
+
+        /// Namespace (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// List tags instead of creating
+        #[arg(long)]
+        list: bool,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Delete a tag
+    Delete {
+        /// Tag ID to delete
+        #[arg(long)]
+        tag_id: Option<String>,
+
+        /// Namespace filter
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// List tags instead of deleting
+        #[arg(long)]
+        list: bool,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Skip confirmation
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Force delete even if tag has repos
+        #[arg(long)]
+        force: bool,
+    },
+}

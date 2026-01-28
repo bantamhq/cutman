@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::auth::TokenGenerator;
 use crate::store::Store;
-use crate::types::{Namespace, NamespaceGrant, Permission, Token, User};
+use crate::types::{Namespace, NamespaceGrant, Permission, Repo, Tag, Token, User};
 
 /// User with resolved namespace name for display
 pub struct UserDisplay {
@@ -87,6 +87,66 @@ impl fmt::Display for ExpirationOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.label)
     }
+}
+
+/// Repo with resolved namespace name for display
+pub struct RepoDisplay {
+    pub repo: Repo,
+    pub namespace_name: String,
+}
+
+impl fmt::Display for RepoDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.namespace_name, self.repo.name)
+    }
+}
+
+/// Tag for display (shows name with optional color)
+pub struct TagDisplay {
+    pub tag: Tag,
+}
+
+impl fmt::Display for TagDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.tag.color {
+            Some(c) => write!(f, "{} [{}]", self.tag.name, c),
+            None => write!(f, "{}", self.tag.name),
+        }
+    }
+}
+
+/// Print a list of tags with optional color formatting
+pub fn print_tags_list(tags: &[Tag]) {
+    if tags.is_empty() {
+        println!("No tags found.");
+        return;
+    }
+    println!();
+    for tag in tags {
+        let display = TagDisplay { tag: tag.clone() };
+        println!("  {display}");
+    }
+    println!();
+}
+
+/// Convert repos to display items using a namespace map
+pub fn repos_to_displays(
+    repos: Vec<Repo>,
+    namespace_map: &std::collections::HashMap<String, String>,
+) -> Vec<RepoDisplay> {
+    repos
+        .into_iter()
+        .map(|repo| {
+            let namespace_name = namespace_map
+                .get(&repo.namespace_id)
+                .cloned()
+                .unwrap_or_default();
+            RepoDisplay {
+                repo,
+                namespace_name,
+            }
+        })
+        .collect()
 }
 
 /// Format a datetime as relative time (e.g., "2 days ago")
