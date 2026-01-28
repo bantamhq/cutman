@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 
+[lib]
+doctest = false
+
+[[bin]]
+name = "cutman"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["macros"] }
@@ -34,3 +42,6 @@ inquire = "0.7"
 
 [dev-dependencies]
 tempfile = "3"
+assert_cmd = "2"
+assert_fs = "1"
+predicates = "3"
