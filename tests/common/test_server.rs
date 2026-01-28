@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::LazyLock;
 
 use tempfile::TempDir;
 
@@ -10,15 +11,19 @@ pub struct TestServer {
     server_process: Option<Child>,
 }
 
+static BUILD_RELEASE: LazyLock<()> = LazyLock::new(|| {
+    let build_status = Command::new("cargo")
+        .args(["build", "--release"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("build release binary");
+    assert!(build_status.success(), "Failed to build release binary");
+});
+
 impl TestServer {
     pub async fn start() -> Self {
-        let build_status = Command::new("cargo")
-            .args(["build", "--release"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .expect("build release binary");
-        assert!(build_status.success(), "Failed to build release binary");
+        LazyLock::force(&BUILD_RELEASE);
 
         let temp_dir = TempDir::new().expect("create temp dir");
         let data_dir = temp_dir.path();

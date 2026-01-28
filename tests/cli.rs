@@ -9,8 +9,12 @@ use std::path::Path;
 
 use assert_cmd::Command;
 use assert_fs::TempDir;
+use chrono::Utc;
+use cutman::store::{SqliteStore, Store};
+use cutman::types::Repo;
 use predicates::prelude::*;
 use serde_json::Value;
+use uuid::Uuid;
 
 struct TestContext {
     temp_dir: TempDir,
@@ -50,16 +54,14 @@ impl TestContext {
         cmd
     }
 
-    fn list_json(&self, subcommand: &str, action: &str) -> Vec<Value> {
+    fn info_json(&self) -> Value {
         let output = self
             .cmd()
             .args([
                 "admin",
-                subcommand,
-                action,
+                "info",
                 "--data-dir",
                 &self.data_dir_str(),
-                "--list",
                 "--json",
             ])
             .output()
@@ -129,8 +131,9 @@ fn add_user(ctx: &TestContext, username: &str) -> String {
 }
 
 fn get_user_id(ctx: &TestContext, username: &str) -> String {
-    let users = ctx.list_json("user", "add");
-    find_id_by_field(&users, "username", username).to_string()
+    let info = ctx.info_json();
+    let users = info["users"].as_array().expect("users not an array");
+    find_id_by_field(users, "username", username).to_string()
 }
 
 fn add_namespace(ctx: &TestContext, name: &str) -> String {
@@ -152,8 +155,11 @@ fn add_namespace(ctx: &TestContext, name: &str) -> String {
 }
 
 fn get_namespace_id(ctx: &TestContext, name: &str) -> String {
-    let namespaces = ctx.list_json("namespace", "add");
-    find_id_by_field(&namespaces, "name", name).to_string()
+    let info = ctx.info_json();
+    let namespaces = info["namespaces"]
+        .as_array()
+        .expect("namespaces not an array");
+    find_id_by_field(namespaces, "name", name).to_string()
 }
 
 fn create_token(ctx: &TestContext, user_id: &str) -> String {
@@ -171,8 +177,9 @@ fn create_token(ctx: &TestContext, user_id: &str) -> String {
         .assert()
         .success();
 
-    let tokens = ctx.list_json("token", "create");
-    find_last_token_for_user(&tokens, user_id)["id"]
+    let info = ctx.info_json();
+    let tokens = info["tokens"].as_array().expect("tokens not an array");
+    find_last_token_for_user(tokens, user_id)["id"]
         .as_str()
         .expect("id not a string")
         .to_string()
@@ -199,19 +206,35 @@ fn grant_permission(ctx: &TestContext, user_id: &str, namespace_id: &str, perms:
 }
 
 fn list_tokens_json(ctx: &TestContext) -> Vec<Value> {
-    ctx.list_json("token", "create")
+    let info = ctx.info_json();
+    info["tokens"]
+        .as_array()
+        .expect("tokens not an array")
+        .clone()
 }
 
 fn list_grants_json(ctx: &TestContext) -> Vec<Value> {
-    ctx.list_json("permission", "grant")
+    let info = ctx.info_json();
+    info["grants"]
+        .as_array()
+        .expect("grants not an array")
+        .clone()
 }
 
 fn list_users_json(ctx: &TestContext) -> Vec<Value> {
-    ctx.list_json("user", "add")
+    let info = ctx.info_json();
+    info["users"]
+        .as_array()
+        .expect("users not an array")
+        .clone()
 }
 
 fn list_namespaces_json(ctx: &TestContext) -> Vec<Value> {
-    ctx.list_json("namespace", "add")
+    let info = ctx.info_json();
+    info["namespaces"]
+        .as_array()
+        .expect("namespaces not an array")
+        .clone()
 }
 
 fn find_last_token_for_user<'a>(tokens: &'a [Value], user_id: &str) -> &'a Value {
@@ -219,6 +242,30 @@ fn find_last_token_for_user<'a>(tokens: &'a [Value], user_id: &str) -> &'a Value
         .iter()
         .rfind(|t| t["user_id"].as_str() == Some(user_id))
         .expect("token not found")
+}
+
+fn open_store(ctx: &TestContext) -> SqliteStore {
+    let db_path = ctx.data_dir().join("cutman.db");
+    SqliteStore::new(&db_path).expect("open store")
+}
+
+fn create_repo(ctx: &TestContext, namespace_id: &str, name: &str) -> String {
+    let now = Utc::now();
+    let repo = Repo {
+        id: Uuid::new_v4().to_string(),
+        namespace_id: namespace_id.to_string(),
+        name: name.to_string(),
+        description: None,
+        public: false,
+        size_bytes: 0,
+        folder_id: None,
+        last_push_at: None,
+        created_at: now,
+        updated_at: now,
+    };
+    let store = open_store(ctx);
+    store.create_repo(&repo).expect("create repo");
+    repo.id
 }
 
 // ============================================================================
@@ -340,11 +387,9 @@ fn user_remove_leaves_other_users_tokens_and_grants_intact() {
     ctx.remove_user(&alice_id).success();
 
     let tokens = list_tokens_json(&ctx);
-    assert!(
-        tokens
-            .iter()
-            .any(|t| t["user_id"].as_str() == Some(&bob_id))
-    );
+    assert!(tokens
+        .iter()
+        .any(|t| t["user_id"].as_str() == Some(&bob_id)));
 
     let grants = list_grants_json(&ctx);
     assert!(grants.iter().any(|g| g["user_id"] == bob_id));
@@ -743,4 +788,436 @@ fn info_json_output_contains_users_namespaces_tokens_and_repos_fields() {
     );
     assert!(info.get("tokens").is_some(), "missing 'tokens' field");
     assert!(info.get("repos").is_some(), "missing 'repos' field");
+}
+
+// ==========================================================================
+// Additional Non-Interactive Validation Tests
+// ==========================================================================
+
+#[test]
+fn token_create_in_non_interactive_mode_fails_without_user_id_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "token",
+            "create",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--user-id is required"));
+}
+
+#[test]
+fn token_revoke_in_non_interactive_mode_fails_without_token_id_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "token",
+            "revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--token-id is required"));
+}
+
+#[test]
+fn token_revoke_in_non_interactive_mode_fails_without_yes_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "oliver");
+    let token_id = create_token(&ctx, &user_id);
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "token",
+            "revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--token-id",
+            &token_id,
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--yes is required"));
+}
+
+#[test]
+fn token_revoke_removes_token() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "paul");
+    let token_id = create_token(&ctx, &user_id);
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "token",
+            "revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--token-id",
+            &token_id,
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .success();
+
+    let tokens = list_tokens_json(&ctx);
+    assert!(tokens.iter().all(|t| t["id"] != token_id));
+}
+
+#[test]
+fn namespace_add_in_non_interactive_mode_fails_without_name_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "namespace",
+            "add",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--name is required"));
+}
+
+#[test]
+fn namespace_remove_in_non_interactive_mode_fails_without_namespace_id_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "namespace",
+            "remove",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--namespace-id is required"));
+}
+
+#[test]
+fn namespace_remove_in_non_interactive_mode_fails_without_yes_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let ns_id = add_namespace(&ctx, "shared-no-yes");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "namespace",
+            "remove",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--namespace-id",
+            &ns_id,
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--yes is required"));
+}
+
+#[test]
+fn permission_revoke_in_non_interactive_mode_fails_without_namespace_id_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "quinn");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--namespace-id is required"));
+}
+
+#[test]
+fn permission_revoke_in_non_interactive_mode_fails_without_yes_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "riley");
+    let ns_id = add_namespace(&ctx, "shared-revoke");
+    grant_permission(&ctx, &user_id, &ns_id, "repo:read");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--namespace-id",
+            &ns_id,
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--yes is required"));
+}
+
+#[test]
+fn permission_revoke_removes_grant() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "sam");
+    let ns_id = add_namespace(&ctx, "shared-grant");
+    grant_permission(&ctx, &user_id, &ns_id, "repo:read");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--namespace-id",
+            &ns_id,
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .success();
+
+    let grants = list_grants_json(&ctx);
+    assert!(grants.iter().all(|g| g["user_id"] != user_id));
+}
+
+#[test]
+fn permission_repo_grant_in_non_interactive_mode_fails_without_repo_id_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "taylor");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-grant",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--permissions",
+            "repo:read",
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--repo-id is required"));
+}
+
+#[test]
+fn permission_repo_grant_in_non_interactive_mode_fails_without_permissions_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "uma");
+    let ns_id = get_namespace_id(&ctx, "uma");
+    let repo_id = create_repo(&ctx, &ns_id, "repo-for-perms");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-grant",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--repo-id",
+            &repo_id,
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--permissions is required"));
+}
+
+#[test]
+fn permission_repo_revoke_in_non_interactive_mode_fails_without_repo_id_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "vera");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--repo-id is required"));
+}
+
+#[test]
+fn permission_repo_revoke_in_non_interactive_mode_fails_without_yes_flag() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "wren");
+    let ns_id = get_namespace_id(&ctx, "wren");
+    let repo_id = create_repo(&ctx, &ns_id, "repo-for-revoke");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-grant",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--repo-id",
+            &repo_id,
+            "--permissions",
+            "repo:read",
+            "--non-interactive",
+        ])
+        .assert()
+        .success();
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--repo-id",
+            &repo_id,
+            "--non-interactive",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--yes is required"));
+}
+
+#[test]
+fn permission_repo_grant_and_revoke_work() {
+    let ctx = TestContext::new();
+    ctx.init().success();
+
+    let user_id = add_user(&ctx, "xena");
+    let ns_id = get_namespace_id(&ctx, "xena");
+    let repo_id = create_repo(&ctx, &ns_id, "repo-access");
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-grant",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--repo-id",
+            &repo_id,
+            "--permissions",
+            "repo:read",
+            "--non-interactive",
+        ])
+        .assert()
+        .success();
+
+    let store = open_store(&ctx);
+    assert!(store
+        .get_repo_grant(&user_id, &repo_id)
+        .expect("get repo grant")
+        .is_some());
+
+    ctx.cmd()
+        .args([
+            "admin",
+            "permission",
+            "repo-revoke",
+            "--data-dir",
+            &ctx.data_dir_str(),
+            "--user-id",
+            &user_id,
+            "--repo-id",
+            &repo_id,
+            "--non-interactive",
+            "--yes",
+        ])
+        .assert()
+        .success();
+
+    let store = open_store(&ctx);
+    assert!(store
+        .get_repo_grant(&user_id, &repo_id)
+        .expect("get repo grant")
+        .is_none());
+}
+
+// ============================================================================
+// Serve Command Tests
+// ============================================================================
+
+#[test]
+fn serve_requires_initialization() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+
+    Command::cargo_bin("cutman")
+        .expect("failed to find binary")
+        .args(["serve", "--data-dir"])
+        .arg(temp_dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Server not initialized"));
 }
