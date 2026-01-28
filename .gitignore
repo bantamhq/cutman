@@ -6,3 +6,4 @@ CLAUDE.md
 /.caliber/
 test/.tmp/
 /data
+tests/api/vars.env

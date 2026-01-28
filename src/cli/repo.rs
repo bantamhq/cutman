@@ -4,9 +4,128 @@ use inquire::{MultiSelect, Select};
 use serde::Serialize;
 
 use super::credentials::load_credentials;
-use super::http_client::{ApiClient, PaginatedResponse};
-use super::pickers::{confirm_action, print_tags_list, repos_to_displays, TagDisplay};
-use crate::types::{Repo, Tag};
+use super::http_client::{ApiClient, NamespaceMap, PaginatedResponse};
+use super::pickers::{TagDisplay, confirm_action, print_tags_list, repos_to_displays};
+use crate::types::{Namespace, Repo, Tag};
+
+/// Parses a repo reference in the format "namespace/name" or "name".
+/// Returns (Some(namespace), name) if namespace was explicit, (None, name) otherwise.
+#[must_use]
+pub fn parse_repo_ref(repo_ref: &str) -> (Option<String>, String) {
+    if let Some((ns, name)) = repo_ref.split_once('/') {
+        (Some(ns.to_string()), name.to_string())
+    } else {
+        (None, repo_ref.to_string())
+    }
+}
+
+/// Resolves the namespace name, fetching the primary namespace if not provided.
+pub fn resolve_namespace_name(
+    namespace: Option<String>,
+    client: &ApiClient,
+) -> anyhow::Result<String> {
+    if let Some(ns) = namespace {
+        return Ok(ns);
+    }
+    let namespaces: Vec<Namespace> = client.get("/namespaces")?;
+    namespaces
+        .into_iter()
+        .next()
+        .map(|n| n.name)
+        .ok_or_else(|| anyhow::anyhow!("No namespace available"))
+}
+
+fn find_repo_by_ref(
+    repos: Vec<Repo>,
+    namespace_name: &str,
+    repo_name: &str,
+    namespace_map: &NamespaceMap,
+) -> Option<Repo> {
+    repos.into_iter().find(|r| {
+        let ns = namespace_map
+            .get(&r.namespace_id)
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        ns == namespace_name && r.name == repo_name
+    })
+}
+
+fn print_repos_list(
+    repos: &[Repo],
+    namespace_map: &NamespaceMap,
+    json: bool,
+) -> anyhow::Result<()> {
+    if json {
+        let output: Vec<RepoListOutput> = repos
+            .iter()
+            .map(|r| RepoListOutput {
+                id: r.id.clone(),
+                namespace: namespace_map
+                    .get(&r.namespace_id)
+                    .cloned()
+                    .unwrap_or_default(),
+                name: r.name.clone(),
+                created_at: r.created_at.to_rfc3339(),
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if repos.is_empty() {
+        println!("No repositories found.");
+    } else {
+        println!();
+        for repo in repos {
+            let ns_name = namespace_map
+                .get(&repo.namespace_id)
+                .map(|s| s.as_str())
+                .unwrap_or("?");
+            println!("  {}/{}", ns_name, repo.name);
+        }
+        println!();
+    }
+    Ok(())
+}
+
+fn select_repo(
+    repos: Vec<Repo>,
+    repo_ref: Option<&str>,
+    namespace_map: &NamespaceMap,
+    client: &ApiClient,
+    non_interactive: bool,
+    prompt: &str,
+) -> anyhow::Result<Option<Repo>> {
+    if let Some(repo_str) = repo_ref {
+        let (ns, repo_name) = parse_repo_ref(repo_str);
+        let ns_name = resolve_namespace_name(ns, client)?;
+        let repo = find_repo_by_ref(repos, &ns_name, &repo_name, namespace_map)
+            .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo_str))?;
+        return Ok(Some(repo));
+    }
+
+    if non_interactive {
+        anyhow::bail!("Repository argument is required in non-interactive mode");
+    }
+
+    let displays = repos_to_displays(repos, namespace_map);
+    if displays.is_empty() {
+        println!("No repositories found.");
+        return Ok(None);
+    }
+
+    let selected = Select::new(prompt, displays)
+        .with_page_size(15)
+        .with_vim_mode(true)
+        .with_help_message("Type to filter, Enter to select")
+        .prompt()?;
+
+    Ok(Some(selected.repo))
+}
+
+fn get_namespace_name(repo: &Repo, namespace_map: &NamespaceMap) -> String {
+    namespace_map
+        .get(&repo.namespace_id)
+        .cloned()
+        .unwrap_or_else(|| "?".to_string())
+}
 
 #[derive(Serialize)]
 struct RepoListOutput {
@@ -22,8 +141,7 @@ struct RepoTagsRequest {
 }
 
 pub fn run_repo_delete(
-    repo_id: Option<String>,
-    namespace: Option<String>,
+    repo_ref: Option<String>,
     list: bool,
     non_interactive: bool,
     json: bool,
@@ -32,78 +150,29 @@ pub fn run_repo_delete(
     let creds = load_credentials()?;
     let client = ApiClient::new(&creds)?;
 
-    let path = match &namespace {
-        Some(ns) => format!("/repos?namespace={}", ns),
-        None => "/repos".to_string(),
-    };
-    let resp: PaginatedResponse<Repo> = client.get_raw(&path)?;
-
+    let resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
     let namespace_map = client.fetch_namespace_map()?;
 
     if list {
-        if json {
-            let output: Vec<RepoListOutput> = resp
-                .data
-                .iter()
-                .map(|r| RepoListOutput {
-                    id: r.id.clone(),
-                    namespace: namespace_map
-                        .get(&r.namespace_id)
-                        .cloned()
-                        .unwrap_or_default(),
-                    name: r.name.clone(),
-                    created_at: r.created_at.to_rfc3339(),
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else if resp.data.is_empty() {
-            println!("No repositories found.");
-        } else {
-            println!();
-            for repo in &resp.data {
-                let ns_name = namespace_map
-                    .get(&repo.namespace_id)
-                    .map(|s| s.as_str())
-                    .unwrap_or("?");
-                println!("  {}/{}", ns_name, repo.name);
-            }
-            println!();
-        }
-        return Ok(());
+        return print_repos_list(&resp.data, &namespace_map, json);
     }
 
-    let repo = if let Some(id) = repo_id {
-        resp.data
-            .into_iter()
-            .find(|r| r.id == id)
-            .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", id))?
-    } else if non_interactive {
-        anyhow::bail!("--repo-id is required in non-interactive mode");
-    } else {
-        let displays = repos_to_displays(resp.data, &namespace_map);
-
-        if displays.is_empty() {
-            println!("No repositories found.");
-            return Ok(());
-        }
-
-        let selected = Select::new("Select repository to delete:", displays)
-            .with_page_size(15)
-            .with_vim_mode(true)
-            .with_help_message("Type to filter, Enter to select")
-            .prompt()?;
-
-        selected.repo
+    let repo = match select_repo(
+        resp.data,
+        repo_ref.as_deref(),
+        &namespace_map,
+        &client,
+        non_interactive,
+        "Select repository to delete:",
+    )? {
+        Some(r) => r,
+        None => return Ok(()),
     };
 
-    let repo_name = &repo.name;
-    let ns_name = namespace_map
-        .get(&repo.namespace_id)
-        .map(|s| s.as_str())
-        .unwrap_or("?");
+    let ns_name = get_namespace_name(&repo, &namespace_map);
 
     let confirmed = confirm_action(
-        &format!("Delete repository '{}/{}'?", ns_name, repo_name),
+        &format!("Delete repository '{}/{}'?", ns_name, repo.name),
         yes,
         non_interactive,
     )?;
@@ -116,14 +185,14 @@ pub fn run_repo_delete(
     client.delete(&format!("/repos/{}", repo.id))?;
 
     println!();
-    println!("Deleted repository '{}/{}'", ns_name, repo_name);
+    println!("Deleted repository '{}/{}'", ns_name, repo.name);
     println!();
 
     Ok(())
 }
 
 pub fn run_repo_clone(
-    repo: Option<String>,
+    repo_ref: Option<String>,
     list: bool,
     non_interactive: bool,
     json: bool,
@@ -132,93 +201,28 @@ pub fn run_repo_clone(
     let client = ApiClient::new(&creds)?;
 
     let resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
-
     let namespace_map = client.fetch_namespace_map()?;
 
     if list {
-        if json {
-            let output: Vec<RepoListOutput> = resp
-                .data
-                .iter()
-                .map(|r| RepoListOutput {
-                    id: r.id.clone(),
-                    namespace: namespace_map
-                        .get(&r.namespace_id)
-                        .cloned()
-                        .unwrap_or_default(),
-                    name: r.name.clone(),
-                    created_at: r.created_at.to_rfc3339(),
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else if resp.data.is_empty() {
-            println!("No repositories found.");
-        } else {
-            println!();
-            for r in &resp.data {
-                let ns_name = namespace_map
-                    .get(&r.namespace_id)
-                    .map(|s| s.as_str())
-                    .unwrap_or("?");
-                println!("  {}/{}", ns_name, r.name);
-            }
-            println!();
-        }
-        return Ok(());
+        return print_repos_list(&resp.data, &namespace_map, json);
     }
 
-    let selected_repo = if let Some(ref repo_ref) = repo {
-        if repo_ref.contains('/') {
-            let parts: Vec<&str> = repo_ref.splitn(2, '/').collect();
-            let ns = parts[0];
-            let name = parts[1];
-            resp.data
-                .into_iter()
-                .find(|r| {
-                    let ns_name = namespace_map
-                        .get(&r.namespace_id)
-                        .map(|s| s.as_str())
-                        .unwrap_or("");
-                    ns_name == ns && r.name == name
-                })
-                .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo_ref))?
-        } else {
-            resp.data
-                .into_iter()
-                .find(|r| r.id == *repo_ref)
-                .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo_ref))?
-        }
-    } else if non_interactive {
-        anyhow::bail!("--repo is required in non-interactive mode");
-    } else {
-        let displays = repos_to_displays(resp.data, &namespace_map);
-
-        if displays.is_empty() {
-            println!("No repositories found.");
-            return Ok(());
-        }
-
-        let selected = Select::new("Select repository to clone:", displays)
-            .with_page_size(15)
-            .with_vim_mode(true)
-            .with_help_message("Type to filter, Enter to select")
-            .prompt()?;
-
-        selected.repo
+    let repo = match select_repo(
+        resp.data,
+        repo_ref.as_deref(),
+        &namespace_map,
+        &client,
+        non_interactive,
+        "Select repository to clone:",
+    )? {
+        Some(r) => r,
+        None => return Ok(()),
     };
 
-    let ns_name = namespace_map
-        .get(&selected_repo.namespace_id)
-        .map(|s| s.as_str())
-        .unwrap_or("?");
-    let clone_url = format!(
-        "{}/git/{}/{}.git",
-        client.base_url(),
-        ns_name,
-        selected_repo.name
-    );
+    let ns_name = get_namespace_name(&repo, &namespace_map);
+    let clone_url = format!("{}/git/{}/{}.git", client.base_url(), ns_name, repo.name);
 
-    println!("Cloning {}/{}...", ns_name, selected_repo.name);
+    println!("Cloning {}/{}...", ns_name, repo.name);
 
     let auth_header = format!("http.extraHeader=Authorization: Bearer {}", creds.token);
     let status = Command::new("git")
@@ -232,15 +236,14 @@ pub fn run_repo_clone(
     }
 
     println!();
-    println!("Cloned to ./{}", selected_repo.name);
+    println!("Cloned to ./{}", repo.name);
     println!();
 
     Ok(())
 }
 
 pub fn run_repo_tag(
-    repo_id: Option<String>,
-    namespace: Option<String>,
+    repo_ref: Option<String>,
     tags: Option<String>,
     list: bool,
     non_interactive: bool,
@@ -250,11 +253,7 @@ pub fn run_repo_tag(
     let client = ApiClient::new(&creds)?;
 
     if list {
-        let path = match &namespace {
-            Some(ns) => format!("/tags?namespace={}", ns),
-            None => "/tags".to_string(),
-        };
-        let resp: PaginatedResponse<Tag> = client.get_raw(&path)?;
+        let resp: PaginatedResponse<Tag> = client.get_raw("/tags")?;
 
         if json {
             println!("{}", serde_json::to_string_pretty(&resp.data)?);
@@ -264,54 +263,31 @@ pub fn run_repo_tag(
         return Ok(());
     }
 
-    let repos_path = match &namespace {
-        Some(ns) => format!("/repos?namespace={}", ns),
-        None => "/repos".to_string(),
-    };
-    let repos_resp: PaginatedResponse<Repo> = client.get_raw(&repos_path)?;
-
+    let repos_resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
     let namespace_map = client.fetch_namespace_map()?;
 
-    let selected_repo = if let Some(id) = repo_id {
-        repos_resp
-            .data
-            .into_iter()
-            .find(|r| r.id == id)
-            .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", id))?
-    } else if non_interactive {
-        anyhow::bail!("--repo-id is required in non-interactive mode");
-    } else {
-        let displays = repos_to_displays(repos_resp.data, &namespace_map);
-
-        if displays.is_empty() {
-            println!("No repositories found.");
-            return Ok(());
-        }
-
-        let selected = Select::new("Select repository:", displays)
-            .with_page_size(15)
-            .with_vim_mode(true)
-            .with_help_message("Type to filter, Enter to select")
-            .prompt()?;
-
-        selected.repo
+    let repo = match select_repo(
+        repos_resp.data,
+        repo_ref.as_deref(),
+        &namespace_map,
+        &client,
+        non_interactive,
+        "Select repository:",
+    )? {
+        Some(r) => r,
+        None => return Ok(()),
     };
 
-    let ns_name = namespace_map
-        .get(&selected_repo.namespace_id)
-        .cloned()
-        .unwrap_or_default();
-    let tags_resp: PaginatedResponse<Tag> = client.get_raw(&format!("/tags?namespace={}", ns_name))?;
+    let ns_name = get_namespace_name(&repo, &namespace_map);
+    let tags_resp: PaginatedResponse<Tag> =
+        client.get_raw(&format!("/tags?namespace={}", ns_name))?;
 
-    let current_tags: Vec<Tag> = client.get(&format!("/repos/{}/tags", selected_repo.id))?;
+    let current_tags: Vec<Tag> = client.get(&format!("/repos/{}/tags", repo.id))?;
     let current_tag_ids: std::collections::HashSet<_> =
         current_tags.iter().map(|t| &t.id).collect();
 
     let selected_tag_ids = if let Some(tag_str) = tags {
-        tag_str
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect()
+        tag_str.split(',').map(|s| s.trim().to_string()).collect()
     } else if non_interactive {
         anyhow::bail!("--tags is required in non-interactive mode");
     } else {
@@ -357,10 +333,10 @@ pub fn run_repo_tag(
     let request = RepoTagsRequest {
         tag_ids: selected_tag_ids,
     };
-    let _: Vec<Tag> = client.put(&format!("/repos/{}/tags", selected_repo.id), &request)?;
+    let _: Vec<Tag> = client.put(&format!("/repos/{}/tags", repo.id), &request)?;
 
     println!();
-    println!("Updated tags on '{}/{}'", ns_name, selected_repo.name);
+    println!("Updated tags on '{}/{}'", ns_name, repo.name);
     println!();
 
     Ok(())

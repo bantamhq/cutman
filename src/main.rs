@@ -92,12 +92,8 @@ enum Commands {
 
     /// Create a new repository
     New {
-        /// Repository name (uses current folder name if omitted)
+        /// Repository (format: namespace/repo or just repo for primary namespace)
         name: Option<String>,
-
-        /// Namespace to create repo in (default: primary)
-        #[arg(short, long)]
-        namespace: Option<String>,
 
         /// Git remote name (default: origin)
         #[arg(short, long, default_value = "origin")]
@@ -370,23 +366,18 @@ fn main() -> anyhow::Result<()> {
                 run_auth_login(server, token, non_interactive)?;
             }
         },
-        Commands::New {
-            name,
-            namespace,
-            remote,
-        } => {
-            run_new(name, namespace, remote)?;
+        Commands::New { name, remote } => {
+            run_new(name, remote)?;
         }
         Commands::Repo { command } => match command {
             RepoCommands::Delete {
-                repo_id,
-                namespace,
+                repo,
                 list,
                 non_interactive,
                 json,
                 yes,
             } => {
-                run_repo_delete(repo_id, namespace, list, non_interactive, json, yes)?;
+                run_repo_delete(repo, list, non_interactive, json, yes)?;
             }
             RepoCommands::Clone {
                 repo,
@@ -397,14 +388,13 @@ fn main() -> anyhow::Result<()> {
                 run_repo_clone(repo, list, non_interactive, json)?;
             }
             RepoCommands::Tag {
-                repo_id,
-                namespace,
+                repo,
                 tags,
                 list,
                 non_interactive,
                 json,
             } => {
-                run_repo_tag(repo_id, namespace, tags, list, non_interactive, json)?;
+                run_repo_tag(repo, tags, list, non_interactive, json)?;
             }
         },
         Commands::Tag { command } => match command {

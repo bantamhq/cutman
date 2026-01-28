@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::credentials::Credentials;
 use crate::types::Namespace;
@@ -30,9 +30,7 @@ pub struct PaginatedResponse<T> {
 
 impl ApiClient {
     pub fn new(creds: &Credentials) -> anyhow::Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
+        let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
         Ok(Self {
             client,
             base_url: creds.server_url.trim_end_matches('/').to_string(),
@@ -53,9 +51,9 @@ impl ApiClient {
             Ok(resp.json()?)
         } else {
             let api_resp: ApiResponse<()> = resp.json()?;
-            Err(anyhow::anyhow!(
-                api_resp.error.unwrap_or_else(|| "Server error (no details provided)".into())
-            ))
+            Err(anyhow::anyhow!(api_resp.error.unwrap_or_else(|| {
+                "Server error (no details provided)".into()
+            })))
         }
     }
 
@@ -96,9 +94,9 @@ impl ApiClient {
             Ok(())
         } else {
             let api_resp: ApiResponse<()> = resp.json()?;
-            Err(anyhow::anyhow!(
-                api_resp.error.unwrap_or_else(|| "Server error (no details provided)".into())
-            ))
+            Err(anyhow::anyhow!(api_resp.error.unwrap_or_else(|| {
+                "Server error (no details provided)".into()
+            })))
         }
     }
 
@@ -113,9 +111,9 @@ impl ApiClient {
                 .ok_or_else(|| anyhow::anyhow!("Server returned an empty response"))
         } else {
             let api_resp: ApiResponse<()> = resp.json()?;
-            Err(anyhow::anyhow!(
-                api_resp.error.unwrap_or_else(|| "Server error (no details provided)".into())
-            ))
+            Err(anyhow::anyhow!(api_resp.error.unwrap_or_else(|| {
+                "Server error (no details provided)".into()
+            })))
         }
     }
 
@@ -126,9 +124,6 @@ impl ApiClient {
 
     pub fn fetch_namespace_map(&self) -> anyhow::Result<NamespaceMap> {
         let namespaces: Vec<Namespace> = self.get("/namespaces")?;
-        Ok(namespaces
-            .into_iter()
-            .map(|n| (n.id, n.name))
-            .collect())
+        Ok(namespaces.into_iter().map(|n| (n.id, n.name)).collect())
     }
 }

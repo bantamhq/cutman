@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use super::credentials::load_credentials;
 use super::http_client::{ApiClient, PaginatedResponse};
-use super::pickers::{confirm_action, print_tags_list, TagDisplay};
+use super::pickers::{TagDisplay, confirm_action, print_tags_list};
 use crate::types::Tag;
 
 #[derive(Serialize)]
@@ -71,11 +71,7 @@ pub fn run_tag_create(
         let input = Text::new("Tag color (hex, optional):")
             .with_placeholder("e.g., ff0000")
             .prompt()?;
-        if input.is_empty() {
-            None
-        } else {
-            Some(input)
-        }
+        if input.is_empty() { None } else { Some(input) }
     };
 
     let request = CreateTagRequest {
@@ -157,11 +153,7 @@ pub fn run_tag_delete(
         selected.tag
     };
 
-    let confirmed = confirm_action(
-        &format!("Delete tag '{}'?", tag.name),
-        yes,
-        non_interactive,
-    )?;
+    let confirmed = confirm_action(&format!("Delete tag '{}'?", tag.name), yes, non_interactive)?;
 
     if !confirmed {
         println!("Cancelled.");

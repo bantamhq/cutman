@@ -303,13 +303,8 @@ pub enum AuthCommands {
 pub enum RepoCommands {
     /// Delete a repository
     Delete {
-        /// Repository ID to delete
-        #[arg(long)]
-        repo_id: Option<String>,
-
-        /// Namespace filter (default: primary)
-        #[arg(short, long)]
-        namespace: Option<String>,
+        /// Repository (format: namespace/repo or just repo for primary namespace)
+        repo: Option<String>,
 
         /// List repos instead of deleting
         #[arg(long)]
@@ -330,8 +325,7 @@ pub enum RepoCommands {
 
     /// Clone a repository
     Clone {
-        /// Repository to clone (format: namespace/repo or repo ID)
-        #[arg(long)]
+        /// Repository (format: namespace/repo or just repo for primary namespace)
         repo: Option<String>,
 
         /// List repos instead of cloning
@@ -349,13 +343,8 @@ pub enum RepoCommands {
 
     /// Set tags on a repository
     Tag {
-        /// Repository ID
-        #[arg(long)]
-        repo_id: Option<String>,
-
-        /// Namespace filter
-        #[arg(short, long)]
-        namespace: Option<String>,
+        /// Repository (format: namespace/repo or just repo for primary namespace)
+        repo: Option<String>,
 
         /// Tag IDs to set (comma-separated, replaces all existing tags)
         #[arg(long)]

@@ -7,7 +7,7 @@ mod namespace;
 mod new;
 mod permission;
 pub mod pickers;
-mod repo;
+pub mod repo;
 mod tag;
 mod token;
 mod user;

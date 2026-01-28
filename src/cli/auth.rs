@@ -1,6 +1,6 @@
 use inquire::Text;
 
-use super::credentials::{save_credentials, Credentials};
+use super::credentials::{Credentials, save_credentials};
 use super::http_client::ApiClient;
 use crate::types::Namespace;
 

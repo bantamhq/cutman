@@ -26,8 +26,9 @@ pub fn load_credentials() -> anyhow::Result<Credentials> {
     let content = fs::read_to_string(&path)
         .map_err(|_| anyhow::anyhow!("Not logged in. Run 'cutman auth login' first."))?;
     let file: CredentialsFile = toml::from_str(&content)?;
-    file.default
-        .ok_or_else(|| anyhow::anyhow!("Credentials file is corrupted. Run 'cutman auth login' to fix."))
+    file.default.ok_or_else(|| {
+        anyhow::anyhow!("Credentials file is corrupted. Run 'cutman auth login' to fix.")
+    })
 }
 
 pub fn save_credentials(creds: &Credentials) -> anyhow::Result<()> {

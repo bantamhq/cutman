@@ -5,9 +5,10 @@ use std::process::Command;
 use inquire::{Select, Text};
 use serde::Serialize;
 
-use super::credentials::{load_credentials, Credentials};
+use super::credentials::{Credentials, load_credentials};
 use super::http_client::ApiClient;
-use crate::types::{Namespace, Repo};
+use super::repo::{parse_repo_ref, resolve_namespace_name};
+use crate::types::Repo;
 
 #[derive(Serialize)]
 struct CreateRepoRequest {
@@ -16,30 +17,27 @@ struct CreateRepoRequest {
     public: bool,
 }
 
-pub fn run_new(
-    name: Option<String>,
-    namespace: Option<String>,
-    remote: String,
-) -> anyhow::Result<()> {
+pub fn run_new(name: Option<String>, remote: String) -> anyhow::Result<()> {
     let creds = load_credentials()?;
     let client = ApiClient::new(&creds)?;
 
     let original_dir = env::current_dir()?;
 
-    let (repo_name, work_dir) = if let Some(name) = name {
-        let dir = original_dir.join(&name);
+    let (namespace, repo_name, work_dir) = if let Some(name) = name {
+        let (ns, repo_name) = parse_repo_ref(&name);
+        let dir = original_dir.join(&repo_name);
         if dir.exists() {
-            anyhow::bail!("Directory '{}' already exists", name);
+            anyhow::bail!("Directory '{}' already exists", repo_name);
         }
         fs::create_dir(&dir)?;
-        (name, dir)
+        (ns, repo_name, dir)
     } else {
         let name = original_dir
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| anyhow::anyhow!("Could not determine repository name from folder. Use 'cutman new <name>' to specify one."))?
             .to_string();
-        (name, original_dir.clone())
+        (None, name, original_dir.clone())
     };
 
     env::set_current_dir(&work_dir)?;
@@ -61,16 +59,7 @@ pub fn run_new(
         };
         let _repo: Repo = client.post("/repos", &request)?;
 
-        let namespace_name = if let Some(ns) = namespace {
-            ns
-        } else {
-            let namespaces: Vec<Namespace> = client.get("/namespaces")?;
-            namespaces
-                .into_iter()
-                .next()
-                .map(|n| n.name)
-                .ok_or_else(|| anyhow::anyhow!("No namespace available. Ask a server admin to grant you access to a namespace."))?
-        };
+        let namespace_name = resolve_namespace_name(namespace, &client)?;
 
         let remote_url = format!(
             "{}/git/{}/{}.git",
@@ -96,10 +85,7 @@ pub fn run_new(
                 ];
 
                 println!();
-                println!(
-                    "Remote '{}' already exists pointing to:",
-                    remote
-                );
+                println!("Remote '{}' already exists pointing to:", remote);
                 println!("  {}", current_url);
                 println!();
 
@@ -159,7 +145,10 @@ pub fn run_new(
 fn run_git(args: &[&str]) -> anyhow::Result<()> {
     let status = Command::new("git").args(args).status()?;
     if !status.success() {
-        anyhow::bail!("Git command failed: git {}. Check the output above for details.", args.join(" "));
+        anyhow::bail!(
+            "Git command failed: git {}. Check the output above for details.",
+            args.join(" ")
+        );
     }
     Ok(())
 }
@@ -172,7 +161,10 @@ fn run_git_with_auth(args: &[&str], creds: &Credentials) -> anyhow::Result<()> {
         .args(args)
         .status()?;
     if !status.success() {
-        anyhow::bail!("Git command failed: git {}. Check the output above for details.", args.join(" "));
+        anyhow::bail!(
+            "Git command failed: git {}. Check the output above for details.",
+            args.join(" ")
+        );
     }
     Ok(())
 }
@@ -180,7 +172,10 @@ fn run_git_with_auth(args: &[&str], creds: &Credentials) -> anyhow::Result<()> {
 fn run_git_output(args: &[&str]) -> anyhow::Result<String> {
     let output = Command::new("git").args(args).output()?;
     if !output.status.success() {
-        anyhow::bail!("Git command failed: git {}. Check the output above for details.", args.join(" "));
+        anyhow::bail!(
+            "Git command failed: git {}. Check the output above for details.",
+            args.join(" ")
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
