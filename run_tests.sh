@@ -34,6 +34,17 @@ BASE_URL="http://${HOST}:${PORT}"
 echo "Data directory: $DATA_DIR"
 echo "Server URL: $BASE_URL"
 
+echo "=== Initializing server ==="
+"$PROJECT_ROOT/target/release/cutman" admin init --data-dir "$DATA_DIR" --non-interactive
+
+# Read admin token from the token file
+ADMIN_TOKEN=$(cat "$DATA_DIR/.admin_token" 2>/dev/null || echo "")
+if [[ -z "$ADMIN_TOKEN" ]]; then
+    echo "ERROR: Could not find admin token after init"
+    exit 1
+fi
+echo "Admin token captured"
+
 echo "=== Starting server ==="
 "$PROJECT_ROOT/target/release/cutman" serve --data-dir "$DATA_DIR" --host "$HOST" --port "$PORT" &
 SERVER_PID=$!
@@ -59,14 +70,6 @@ for i in {1..30}; do
     fi
     sleep 0.5
 done
-
-# Read admin token from the token file
-ADMIN_TOKEN=$(cat "$DATA_DIR/.admin_token" 2>/dev/null || echo "")
-if [[ -z "$ADMIN_TOKEN" ]]; then
-    echo "ERROR: Could not find admin token"
-    exit 1
-fi
-echo "Admin token captured"
 
 echo "=== Creating test data ==="
 
