@@ -9,6 +9,11 @@ use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 use cutman::auth::TokenGenerator;
+use cutman::cli::{
+    AdminCommands, NamespaceCommands, PermissionCommands, TokenCommands, UserCommands, run_info,
+    run_namespace_add, run_namespace_remove, run_permission_grant, run_permission_revoke,
+    run_token_create, run_token_revoke, run_user_add, run_user_remove,
+};
 use cutman::config::ServerConfig;
 use cutman::server::{AppState, create_router};
 use cutman::store::{SqliteStore, Store};
@@ -78,20 +83,6 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
-enum AdminCommands {
-    /// Initialize the server (create database and admin token)
-    Init {
-        /// Data directory for database and repositories
-        #[arg(long, default_value = "./data")]
-        data_dir: String,
-
-        /// Skip interactive prompts
-        #[arg(long)]
-        non_interactive: bool,
-    },
-}
-
 fn run_init(data_dir: String, non_interactive: bool) -> anyhow::Result<()> {
     let data_path: std::path::PathBuf = data_dir.into();
     fs::create_dir_all(&data_path)?;
@@ -135,7 +126,10 @@ fn run_init(data_dir: String, non_interactive: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn create_default_user_prompt(store: &SqliteStore, generator: &TokenGenerator) -> anyhow::Result<()> {
+fn create_default_user_prompt(
+    store: &SqliteStore,
+    generator: &TokenGenerator,
+) -> anyhow::Result<()> {
     let create_user = inquire::Confirm::new("Would you like to create a default user?")
         .with_default(false)
         .prompt()?;
@@ -209,6 +203,121 @@ async fn main() -> anyhow::Result<()> {
                 non_interactive,
             } => {
                 run_init(data_dir, non_interactive)?;
+            }
+            AdminCommands::User { command } => match command {
+                UserCommands::Add {
+                    data_dir,
+                    username,
+                    create_token,
+                    non_interactive,
+                    list,
+                    json,
+                } => {
+                    run_user_add(
+                        data_dir,
+                        username,
+                        create_token,
+                        non_interactive,
+                        list,
+                        json,
+                    )?;
+                }
+                UserCommands::Remove {
+                    data_dir,
+                    user_id,
+                    non_interactive,
+                    list,
+                    json,
+                    yes,
+                } => {
+                    run_user_remove(data_dir, user_id, non_interactive, list, json, yes)?;
+                }
+            },
+            AdminCommands::Token { command } => match command {
+                TokenCommands::Create {
+                    data_dir,
+                    user_id,
+                    expires_days,
+                    non_interactive,
+                    list,
+                    json,
+                } => {
+                    run_token_create(data_dir, user_id, expires_days, non_interactive, list, json)?;
+                }
+                TokenCommands::Revoke {
+                    data_dir,
+                    token_id,
+                    non_interactive,
+                    list,
+                    json,
+                    yes,
+                } => {
+                    run_token_revoke(data_dir, token_id, non_interactive, list, json, yes)?;
+                }
+            },
+            AdminCommands::Namespace { command } => match command {
+                NamespaceCommands::Add {
+                    data_dir,
+                    name,
+                    non_interactive,
+                    list,
+                    json,
+                } => {
+                    run_namespace_add(data_dir, name, non_interactive, list, json)?;
+                }
+                NamespaceCommands::Remove {
+                    data_dir,
+                    namespace_id,
+                    non_interactive,
+                    list,
+                    json,
+                    yes,
+                } => {
+                    run_namespace_remove(data_dir, namespace_id, non_interactive, list, json, yes)?;
+                }
+            },
+            AdminCommands::Permission { command } => match command {
+                PermissionCommands::Grant {
+                    data_dir,
+                    user_id,
+                    namespace_id,
+                    permissions,
+                    non_interactive,
+                    list,
+                    json,
+                } => {
+                    run_permission_grant(
+                        data_dir,
+                        user_id,
+                        namespace_id,
+                        permissions,
+                        non_interactive,
+                        list,
+                        json,
+                    )?;
+                }
+                PermissionCommands::Revoke {
+                    data_dir,
+                    user_id,
+                    namespace_id,
+                    non_interactive,
+                    list,
+                    json,
+                    yes,
+                } => {
+                    run_permission_revoke(
+                        data_dir,
+                        user_id,
+                        namespace_id,
+                        non_interactive,
+                        list,
+                        json,
+                        yes,
+                    )?;
+                }
+            },
+            AdminCommands::Info { data_dir, json } => {
+                run_info(data_dir, json)?;
             }
         },
         Commands::Serve {

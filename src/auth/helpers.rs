@@ -47,7 +47,8 @@ pub fn validate_token(
     raw_token: &str,
     allow_admin: bool,
 ) -> Result<ValidatedToken, TokenValidationError> {
-    let (lookup, _secret) = parse_token(raw_token).map_err(|_| TokenValidationError::InvalidToken)?;
+    let (lookup, _secret) =
+        parse_token(raw_token).map_err(|_| TokenValidationError::InvalidToken)?;
 
     let token = state
         .store
@@ -92,16 +93,16 @@ pub fn validate_token(
 /// Returns None if no auth header is present.
 /// Returns Some(token_string) if auth header is present and valid format.
 /// Returns Err if the auth scheme is unsupported.
-pub fn extract_token_from_header(auth_header: Option<&str>) -> Result<Option<String>, TokenValidationError> {
+pub fn extract_token_from_header(
+    auth_header: Option<&str>,
+) -> Result<Option<String>, TokenValidationError> {
     match auth_header {
         Some(header) if header.starts_with("Bearer ") => {
             Ok(Some(header.strip_prefix("Bearer ").unwrap().to_string()))
         }
-        Some(header) if header.starts_with("Basic ") => {
-            extract_basic_auth_token(header)
-                .ok_or(TokenValidationError::InvalidToken)
-                .map(Some)
-        }
+        Some(header) if header.starts_with("Basic ") => extract_basic_auth_token(header)
+            .ok_or(TokenValidationError::InvalidToken)
+            .map(Some),
         Some(_) => Err(TokenValidationError::InvalidScheme),
         None => Ok(None),
     }
