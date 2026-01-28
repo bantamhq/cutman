@@ -37,7 +37,7 @@ pub fn run_new(
         let name = original_dir
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| anyhow::anyhow!("Could not determine folder name"))?
+            .ok_or_else(|| anyhow::anyhow!("Could not determine repository name from folder. Use 'cutman new <name>' to specify one."))?
             .to_string();
         (name, original_dir.clone())
     };
@@ -69,7 +69,7 @@ pub fn run_new(
                 .into_iter()
                 .next()
                 .map(|n| n.name)
-                .ok_or_else(|| anyhow::anyhow!("No namespace found"))?
+                .ok_or_else(|| anyhow::anyhow!("No namespace available. Ask a server admin to grant you access to a namespace."))?
         };
 
         let remote_url = format!(
@@ -159,7 +159,7 @@ pub fn run_new(
 fn run_git(args: &[&str]) -> anyhow::Result<()> {
     let status = Command::new("git").args(args).status()?;
     if !status.success() {
-        anyhow::bail!("git {} failed", args.join(" "));
+        anyhow::bail!("Git command failed: git {}. Check the output above for details.", args.join(" "));
     }
     Ok(())
 }
@@ -172,7 +172,7 @@ fn run_git_with_auth(args: &[&str], creds: &Credentials) -> anyhow::Result<()> {
         .args(args)
         .status()?;
     if !status.success() {
-        anyhow::bail!("git {} failed", args.join(" "));
+        anyhow::bail!("Git command failed: git {}. Check the output above for details.", args.join(" "));
     }
     Ok(())
 }
@@ -180,7 +180,7 @@ fn run_git_with_auth(args: &[&str], creds: &Credentials) -> anyhow::Result<()> {
 fn run_git_output(args: &[&str]) -> anyhow::Result<String> {
     let output = Command::new("git").args(args).output()?;
     if !output.status.success() {
-        anyhow::bail!("git {} failed", args.join(" "));
+        anyhow::bail!("Git command failed: git {}. Check the output above for details.", args.join(" "));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }

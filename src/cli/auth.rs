@@ -25,12 +25,23 @@ pub fn run_auth_login(
     non_interactive: bool,
 ) -> anyhow::Result<()> {
     let server = if let Some(s) = server {
+        if s.trim().is_empty() {
+            anyhow::bail!("Server URL cannot be empty");
+        }
         s
     } else if non_interactive {
         anyhow::bail!("--server is required in non-interactive mode");
     } else {
         Text::new("Server URL:")
-            .with_placeholder("http://localhost:8080")
+            .with_validator(|input: &str| {
+                if input.trim().is_empty() {
+                    Ok(inquire::validator::Validation::Invalid(
+                        "Server URL is required".into(),
+                    ))
+                } else {
+                    Ok(inquire::validator::Validation::Valid)
+                }
+            })
             .prompt()?
     };
 

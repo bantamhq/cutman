@@ -17,7 +17,7 @@ pub struct CredentialsFile {
 
 pub fn credentials_path() -> anyhow::Result<PathBuf> {
     let dirs = ProjectDirs::from("", "", "cutman")
-        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory. Is $HOME set?"))?;
     Ok(dirs.config_dir().join("credentials.toml"))
 }
 
@@ -27,7 +27,7 @@ pub fn load_credentials() -> anyhow::Result<Credentials> {
         .map_err(|_| anyhow::anyhow!("Not logged in. Run 'cutman auth login' first."))?;
     let file: CredentialsFile = toml::from_str(&content)?;
     file.default
-        .ok_or_else(|| anyhow::anyhow!("No default credentials found"))
+        .ok_or_else(|| anyhow::anyhow!("Credentials file is corrupted. Run 'cutman auth login' to fix."))
 }
 
 pub fn save_credentials(creds: &Credentials) -> anyhow::Result<()> {

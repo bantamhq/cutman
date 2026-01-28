@@ -5,3 +5,4 @@ CLAUDE.md
 .DS_STORE
 /.caliber/
 test/.tmp/
+/data

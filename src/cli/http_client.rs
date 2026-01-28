@@ -54,7 +54,7 @@ impl ApiClient {
         } else {
             let api_resp: ApiResponse<()> = resp.json()?;
             Err(anyhow::anyhow!(
-                api_resp.error.unwrap_or_else(|| "Unknown error".into())
+                api_resp.error.unwrap_or_else(|| "Server error (no details provided)".into())
             ))
         }
     }
@@ -97,7 +97,7 @@ impl ApiClient {
         } else {
             let api_resp: ApiResponse<()> = resp.json()?;
             Err(anyhow::anyhow!(
-                api_resp.error.unwrap_or_else(|| "Unknown error".into())
+                api_resp.error.unwrap_or_else(|| "Server error (no details provided)".into())
             ))
         }
     }
@@ -110,11 +110,11 @@ impl ApiClient {
             let api_resp: ApiResponse<T> = resp.json()?;
             api_resp
                 .data
-                .ok_or_else(|| anyhow::anyhow!("No data in response"))
+                .ok_or_else(|| anyhow::anyhow!("Server returned an empty response"))
         } else {
             let api_resp: ApiResponse<()> = resp.json()?;
             Err(anyhow::anyhow!(
-                api_resp.error.unwrap_or_else(|| "Unknown error".into())
+                api_resp.error.unwrap_or_else(|| "Server error (no details provided)".into())
             ))
         }
     }

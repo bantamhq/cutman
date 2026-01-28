@@ -228,7 +228,7 @@ pub fn run_repo_clone(
         .status()?;
 
     if !status.success() {
-        anyhow::bail!("git clone failed");
+        anyhow::bail!("Git clone failed. Check the output above for details.");
     }
 
     println!();
