@@ -1,6 +1,5 @@
 use chrono::Utc;
 use inquire::Text;
-use serde::Serialize;
 use uuid::Uuid;
 
 use crate::server::validation::validate_namespace_name;
@@ -8,60 +7,14 @@ use crate::store::Store;
 use crate::types::Namespace;
 
 use super::init_store;
-use super::pickers::{NamespaceDisplay, confirm_action, list_namespaces, pick_namespace};
-
-#[derive(Serialize)]
-struct NamespaceOutput {
-    id: String,
-    name: String,
-    is_shared: bool,
-    created_at: String,
-}
-
-impl From<&NamespaceDisplay> for NamespaceOutput {
-    fn from(display: &NamespaceDisplay) -> Self {
-        Self {
-            id: display.namespace.id.clone(),
-            name: display.namespace.name.clone(),
-            is_shared: !display.has_owner,
-            created_at: display.namespace.created_at.to_rfc3339(),
-        }
-    }
-}
-
-fn print_namespaces_list(namespaces: &[NamespaceDisplay]) {
-    if namespaces.is_empty() {
-        println!("No namespaces found.");
-        return;
-    }
-    println!();
-    for ns in namespaces {
-        let label = if ns.has_owner { "[owned]" } else { "[shared]" };
-        println!("  {} {}", ns.namespace.name, label);
-    }
-    println!();
-}
+use super::pickers::{confirm_action, pick_namespace};
 
 pub fn run_namespace_add(
     data_dir: String,
     name: Option<String>,
     non_interactive: bool,
-    list: bool,
-    json: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
-
-    if list {
-        let namespaces = list_namespaces(&store)?;
-        if json {
-            let output: Vec<NamespaceOutput> =
-                namespaces.iter().map(NamespaceOutput::from).collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else {
-            print_namespaces_list(&namespaces);
-        }
-        return Ok(());
-    }
 
     let name = if let Some(n) = name {
         validate_namespace_name(&n).map_err(anyhow::Error::msg)?;
@@ -104,23 +57,9 @@ pub fn run_namespace_remove(
     data_dir: String,
     namespace_id: Option<String>,
     non_interactive: bool,
-    list: bool,
-    json: bool,
     yes: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
-
-    if list {
-        let namespaces = list_namespaces(&store)?;
-        if json {
-            let output: Vec<NamespaceOutput> =
-                namespaces.iter().map(NamespaceOutput::from).collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else {
-            print_namespaces_list(&namespaces);
-        }
-        return Ok(());
-    }
 
     let namespace = if let Some(id) = namespace_id {
         store

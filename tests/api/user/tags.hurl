@@ -44,7 +44,7 @@ HTTP 409
 [Asserts]
 jsonpath "$.error" contains "already exists"
 
-# Create tag - with empty name (API allows this)
+# Create tag - with empty name (API rejects this)
 POST {{base_url}}/api/v1/tags
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
@@ -52,9 +52,9 @@ Content-Type: application/json
     "name": "",
     "namespace": "{{user_ns_name}}"
 }
-HTTP 201
-[Captures]
-empty_name_tag_id: jsonpath "$.data.id"
+HTTP 400
+[Asserts]
+jsonpath "$.error" contains "cannot be empty"
 
 # Get specific tag - success
 GET {{base_url}}/api/v1/tags/{{new_tag_id}}
@@ -93,11 +93,6 @@ HTTP 204
 DELETE {{base_url}}/api/v1/tags/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{user_token}}
 HTTP 404
-
-# Clean up empty name tag
-DELETE {{base_url}}/api/v1/tags/{{empty_name_tag_id}}?force=true
-Authorization: Bearer {{user_token}}
-HTTP 204
 
 # Tags - unauthorized (no token)
 GET {{base_url}}/api/v1/tags

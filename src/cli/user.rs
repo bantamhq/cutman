@@ -1,6 +1,5 @@
 use chrono::Utc;
 use inquire::{Confirm, Text};
-use serde::Serialize;
 use uuid::Uuid;
 
 use crate::auth::TokenGenerator;
@@ -9,60 +8,15 @@ use crate::store::Store;
 use crate::types::{Namespace, User};
 
 use super::init_store;
-use super::pickers::{
-    UserDisplay, confirm_action, create_token_for_user, get_or_pick_user, list_users,
-    pick_expiration,
-};
-
-#[derive(Serialize)]
-struct UserOutput {
-    id: String,
-    username: String,
-    created_at: String,
-}
-
-impl From<&UserDisplay> for UserOutput {
-    fn from(display: &UserDisplay) -> Self {
-        Self {
-            id: display.user.id.clone(),
-            username: display.namespace_name.clone(),
-            created_at: display.user.created_at.to_rfc3339(),
-        }
-    }
-}
-
-fn print_users_list(users: &[UserDisplay]) {
-    if users.is_empty() {
-        println!("No users found.");
-        return;
-    }
-    println!();
-    for user in users {
-        println!("  {} ({})", user.namespace_name, &user.user.id[..8]);
-    }
-    println!();
-}
+use super::pickers::{confirm_action, create_token_for_user, get_or_pick_user, pick_expiration};
 
 pub fn run_user_add(
     data_dir: String,
     username: Option<String>,
     create_token_flag: bool,
     non_interactive: bool,
-    list: bool,
-    json: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
-
-    if list {
-        let users = list_users(&store)?;
-        if json {
-            let output: Vec<UserOutput> = users.iter().map(UserOutput::from).collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else {
-            print_users_list(&users);
-        }
-        return Ok(());
-    }
 
     let username = if let Some(name) = username {
         validate_namespace_name(&name).map_err(anyhow::Error::msg)?;
@@ -153,22 +107,9 @@ pub fn run_user_remove(
     data_dir: String,
     user_id: Option<String>,
     non_interactive: bool,
-    list: bool,
-    json: bool,
     yes: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
-
-    if list {
-        let users = list_users(&store)?;
-        if json {
-            let output: Vec<UserOutput> = users.iter().map(UserOutput::from).collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else {
-            print_users_list(&users);
-        }
-        return Ok(());
-    }
 
     let (user, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
         Some(result) => result,

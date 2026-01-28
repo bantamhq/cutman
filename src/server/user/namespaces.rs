@@ -9,7 +9,7 @@ use axum::{
 
 use crate::auth::RequireUser;
 use crate::server::AppState;
-use crate::server::dto::{UpdateNamespaceRequest, UserGrantResponse};
+use crate::server::dto::{NamespaceResponse, UpdateNamespaceRequest, UserGrantResponse};
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
 use crate::types::Permission;
 
@@ -65,7 +65,15 @@ pub async fn list_namespaces(
         }
     }
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(namespaces)))
+    let responses: Vec<NamespaceResponse> = namespaces
+        .into_iter()
+        .map(|ns| NamespaceResponse {
+            is_primary: ns.id == user.primary_namespace_id,
+            namespace: ns,
+        })
+        .collect();
+
+    Ok::<_, ApiError>(Json(ApiResponse::success(responses)))
 }
 
 pub async fn update_namespace(

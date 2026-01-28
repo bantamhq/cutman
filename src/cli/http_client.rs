@@ -9,6 +9,13 @@ use crate::types::Namespace;
 
 pub type NamespaceMap = HashMap<String, String>;
 
+#[derive(Debug, Deserialize)]
+pub struct NamespaceWithPrimary {
+    #[serde(flatten)]
+    pub namespace: Namespace,
+    pub is_primary: bool,
+}
+
 pub struct ApiClient {
     client: Client,
     base_url: String,
@@ -123,7 +130,14 @@ impl ApiClient {
     }
 
     pub fn fetch_namespace_map(&self) -> anyhow::Result<NamespaceMap> {
-        let namespaces: Vec<Namespace> = self.get("/namespaces")?;
-        Ok(namespaces.into_iter().map(|n| (n.id, n.name)).collect())
+        let namespaces: Vec<NamespaceWithPrimary> = self.get("/namespaces")?;
+        Ok(namespaces
+            .into_iter()
+            .map(|n| (n.namespace.id, n.namespace.name))
+            .collect())
+    }
+
+    pub fn fetch_namespaces(&self) -> anyhow::Result<Vec<NamespaceWithPrimary>> {
+        self.get("/namespaces")
     }
 }

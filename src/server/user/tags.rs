@@ -19,6 +19,7 @@ use crate::server::response::{
 use crate::types::{Permission, Tag};
 
 use super::access::{require_namespace_permission, resolve_namespace_id};
+use crate::server::validation::validate_tag_name;
 
 pub async fn list_tags(
     auth: RequireUser,
@@ -52,6 +53,8 @@ pub async fn create_tag(
     let ns_id = resolve_namespace_id(store, user, req.namespace.as_deref())?;
 
     require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_WRITE)?;
+
+    validate_tag_name(&req.name)?;
 
     if store
         .get_tag_by_name(&ns_id, &req.name)
@@ -109,6 +112,8 @@ pub async fn update_tag(
     require_namespace_permission(store, user, &tag.namespace_id, Permission::NAMESPACE_WRITE)?;
 
     if let Some(name) = req.name {
+        validate_tag_name(&name)?;
+
         if name != tag.name
             && store
                 .get_tag_by_name(&tag.namespace_id, &name)

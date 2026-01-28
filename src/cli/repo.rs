@@ -5,17 +5,30 @@ use serde::Serialize;
 
 use super::credentials::load_credentials;
 use super::http_client::{ApiClient, NamespaceMap, PaginatedResponse};
-use super::pickers::{TagDisplay, confirm_action, print_tags_list, repos_to_displays};
-use crate::types::{Namespace, Repo, Tag};
+use super::pickers::{TagDisplay, confirm_action, repos_to_displays};
+use crate::types::{Repo, Tag};
 
 /// Parses a repo reference in the format "namespace/name" or "name".
 /// Returns (Some(namespace), name) if namespace was explicit, (None, name) otherwise.
-#[must_use]
-pub fn parse_repo_ref(repo_ref: &str) -> (Option<String>, String) {
-    if let Some((ns, name)) = repo_ref.split_once('/') {
-        (Some(ns.to_string()), name.to_string())
-    } else {
-        (None, repo_ref.to_string())
+/// Validates that the reference doesn't contain extra slashes.
+pub fn parse_repo_ref(repo_ref: &str) -> anyhow::Result<(Option<String>, String)> {
+    let slash_count = repo_ref.chars().filter(|c| *c == '/').count();
+    match slash_count {
+        0 => Ok((None, repo_ref.to_string())),
+        1 => {
+            let (ns, name) = repo_ref.split_once('/').unwrap();
+            if ns.is_empty() || name.is_empty() {
+                anyhow::bail!(
+                    "Invalid repo reference '{}': namespace and name cannot be empty",
+                    repo_ref
+                );
+            }
+            Ok((Some(ns.to_string()), name.to_string()))
+        }
+        _ => anyhow::bail!(
+            "Invalid repo reference '{}': expected 'namespace/repo' or 'repo'",
+            repo_ref
+        ),
     }
 }
 
@@ -27,11 +40,11 @@ pub fn resolve_namespace_name(
     if let Some(ns) = namespace {
         return Ok(ns);
     }
-    let namespaces: Vec<Namespace> = client.get("/namespaces")?;
+    let namespaces = client.fetch_namespaces()?;
     namespaces
         .into_iter()
-        .next()
-        .map(|n| n.name)
+        .find(|n| n.is_primary)
+        .map(|n| n.namespace.name)
         .ok_or_else(|| anyhow::anyhow!("No namespace available"))
 }
 
@@ -50,41 +63,6 @@ fn find_repo_by_ref(
     })
 }
 
-fn print_repos_list(
-    repos: &[Repo],
-    namespace_map: &NamespaceMap,
-    json: bool,
-) -> anyhow::Result<()> {
-    if json {
-        let output: Vec<RepoListOutput> = repos
-            .iter()
-            .map(|r| RepoListOutput {
-                id: r.id.clone(),
-                namespace: namespace_map
-                    .get(&r.namespace_id)
-                    .cloned()
-                    .unwrap_or_default(),
-                name: r.name.clone(),
-                created_at: r.created_at.to_rfc3339(),
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&output)?);
-    } else if repos.is_empty() {
-        println!("No repositories found.");
-    } else {
-        println!();
-        for repo in repos {
-            let ns_name = namespace_map
-                .get(&repo.namespace_id)
-                .map(|s| s.as_str())
-                .unwrap_or("?");
-            println!("  {}/{}", ns_name, repo.name);
-        }
-        println!();
-    }
-    Ok(())
-}
-
 fn select_repo(
     repos: Vec<Repo>,
     repo_ref: Option<&str>,
@@ -94,7 +72,7 @@ fn select_repo(
     prompt: &str,
 ) -> anyhow::Result<Option<Repo>> {
     if let Some(repo_str) = repo_ref {
-        let (ns, repo_name) = parse_repo_ref(repo_str);
+        let (ns, repo_name) = parse_repo_ref(repo_str)?;
         let ns_name = resolve_namespace_name(ns, client)?;
         let repo = find_repo_by_ref(repos, &ns_name, &repo_name, namespace_map)
             .ok_or_else(|| anyhow::anyhow!("Repository not found: {}", repo_str))?;
@@ -128,23 +106,13 @@ fn get_namespace_name(repo: &Repo, namespace_map: &NamespaceMap) -> String {
 }
 
 #[derive(Serialize)]
-struct RepoListOutput {
-    id: String,
-    namespace: String,
-    name: String,
-    created_at: String,
-}
-
-#[derive(Serialize)]
 struct RepoTagsRequest {
     tag_ids: Vec<String>,
 }
 
 pub fn run_repo_delete(
     repo_ref: Option<String>,
-    list: bool,
     non_interactive: bool,
-    json: bool,
     yes: bool,
 ) -> anyhow::Result<()> {
     let creds = load_credentials()?;
@@ -152,10 +120,6 @@ pub fn run_repo_delete(
 
     let resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
     let namespace_map = client.fetch_namespace_map()?;
-
-    if list {
-        return print_repos_list(&resp.data, &namespace_map, json);
-    }
 
     let repo = match select_repo(
         resp.data,
@@ -191,21 +155,12 @@ pub fn run_repo_delete(
     Ok(())
 }
 
-pub fn run_repo_clone(
-    repo_ref: Option<String>,
-    list: bool,
-    non_interactive: bool,
-    json: bool,
-) -> anyhow::Result<()> {
+pub fn run_repo_clone(repo_ref: Option<String>, non_interactive: bool) -> anyhow::Result<()> {
     let creds = load_credentials()?;
     let client = ApiClient::new(&creds)?;
 
     let resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
     let namespace_map = client.fetch_namespace_map()?;
-
-    if list {
-        return print_repos_list(&resp.data, &namespace_map, json);
-    }
 
     let repo = match select_repo(
         resp.data,
@@ -245,23 +200,10 @@ pub fn run_repo_clone(
 pub fn run_repo_tag(
     repo_ref: Option<String>,
     tags: Option<String>,
-    list: bool,
     non_interactive: bool,
-    json: bool,
 ) -> anyhow::Result<()> {
     let creds = load_credentials()?;
     let client = ApiClient::new(&creds)?;
-
-    if list {
-        let resp: PaginatedResponse<Tag> = client.get_raw("/tags")?;
-
-        if json {
-            println!("{}", serde_json::to_string_pretty(&resp.data)?);
-        } else {
-            print_tags_list(&resp.data);
-        }
-        return Ok(());
-    }
 
     let repos_resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
     let namespace_map = client.fetch_namespace_map()?;

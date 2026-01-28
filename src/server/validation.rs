@@ -2,6 +2,7 @@ use crate::server::response::ApiError;
 
 const MAX_NAMESPACE_NAME_LEN: usize = 64;
 const MAX_REPO_NAME_LEN: usize = 100;
+const MAX_TAG_NAME_LEN: usize = 64;
 
 fn is_valid_name_char(c: char, allow_period: bool) -> bool {
     c.is_ascii_alphanumeric() || c == '-' || c == '_' || (allow_period && c == '.')
@@ -41,4 +42,8 @@ pub fn validate_namespace_name(name: &str) -> Result<(), String> {
 
 pub fn validate_repo_name(name: &str) -> Result<(), ApiError> {
     validate_name(name, "Repository", MAX_REPO_NAME_LEN, true, false).map_err(ApiError::bad_request)
+}
+
+pub fn validate_tag_name(name: &str) -> Result<(), ApiError> {
+    validate_name(name, "Tag", MAX_TAG_NAME_LEN, false, true).map_err(ApiError::bad_request)
 }

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::Namespace;
+
 #[derive(Debug, Deserialize)]
 pub struct CreateNamespaceRequest {
     pub name: String,
@@ -201,4 +203,11 @@ pub struct UserGrantResponse {
     pub allow: Vec<&'static str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub deny: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NamespaceResponse {
+    #[serde(flatten)]
+    pub namespace: Namespace,
+    pub is_primary: bool,
 }

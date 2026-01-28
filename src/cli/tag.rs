@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use super::credentials::load_credentials;
 use super::http_client::{ApiClient, PaginatedResponse};
-use super::pickers::{TagDisplay, confirm_action, print_tags_list};
+use super::pickers::{TagDisplay, confirm_action};
 use crate::types::Tag;
 
 #[derive(Serialize)]
@@ -13,47 +13,14 @@ struct CreateTagRequest {
     namespace: Option<String>,
 }
 
-#[derive(Serialize)]
-struct TagListOutput {
-    id: String,
-    name: String,
-    color: Option<String>,
-}
-
 pub fn run_tag_create(
     name: Option<String>,
     color: Option<String>,
     namespace: Option<String>,
-    list: bool,
     non_interactive: bool,
-    json: bool,
 ) -> anyhow::Result<()> {
     let creds = load_credentials()?;
     let client = ApiClient::new(&creds)?;
-
-    if list {
-        let path = match &namespace {
-            Some(ns) => format!("/tags?namespace={}", ns),
-            None => "/tags".to_string(),
-        };
-        let resp: PaginatedResponse<Tag> = client.get_raw(&path)?;
-
-        if json {
-            let output: Vec<TagListOutput> = resp
-                .data
-                .iter()
-                .map(|t| TagListOutput {
-                    id: t.id.clone(),
-                    name: t.name.clone(),
-                    color: t.color.clone(),
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else {
-            print_tags_list(&resp.data);
-        }
-        return Ok(());
-    }
 
     let name = if let Some(n) = name {
         n
@@ -92,9 +59,7 @@ pub fn run_tag_create(
 pub fn run_tag_delete(
     tag_id: Option<String>,
     namespace: Option<String>,
-    list: bool,
     non_interactive: bool,
-    json: bool,
     yes: bool,
     force: bool,
 ) -> anyhow::Result<()> {
@@ -106,24 +71,6 @@ pub fn run_tag_delete(
         None => "/tags".to_string(),
     };
     let resp: PaginatedResponse<Tag> = client.get_raw(&path)?;
-
-    if list {
-        if json {
-            let output: Vec<TagListOutput> = resp
-                .data
-                .iter()
-                .map(|t| TagListOutput {
-                    id: t.id.clone(),
-                    name: t.name.clone(),
-                    color: t.color.clone(),
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        } else {
-            print_tags_list(&resp.data);
-        }
-        return Ok(());
-    }
 
     let tag = if let Some(id) = tag_id {
         resp.data

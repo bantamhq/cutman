@@ -24,7 +24,7 @@ pub fn run_new(name: Option<String>, remote: String) -> anyhow::Result<()> {
     let original_dir = env::current_dir()?;
 
     let (namespace, repo_name, work_dir) = if let Some(name) = name {
-        let (ns, repo_name) = parse_repo_ref(&name);
+        let (ns, repo_name) = parse_repo_ref(&name)?;
         let dir = original_dir.join(&repo_name);
         if dir.exists() {
             anyhow::bail!("Directory '{}' already exists", repo_name);
@@ -117,11 +117,17 @@ pub fn run_new(name: Option<String>, remote: String) -> anyhow::Result<()> {
             remote
         };
 
-        run_git(&["add", "."])?;
+        // Only auto-commit if repo has no commits yet
+        let has_commits = run_git_output(&["rev-list", "--count", "HEAD"])
+            .map(|s| s.trim().parse::<u32>().unwrap_or(0) > 0)
+            .unwrap_or(false);
 
-        let status = run_git_output(&["status", "--porcelain"])?;
-        if !status.is_empty() {
-            run_git(&["commit", "-m", "Initial commit"])?;
+        if !has_commits {
+            run_git(&["add", "."])?;
+            let status = run_git_output(&["status", "--porcelain"])?;
+            if !status.is_empty() {
+                run_git(&["commit", "-m", "Initial commit"])?;
+            }
         }
 
         let branch = run_git_output(&["rev-parse", "--abbrev-ref", "HEAD"])?;
