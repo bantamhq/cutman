@@ -64,6 +64,8 @@ async fn main() -> anyhow::Result<()> {
             let store = SqliteStore::new(config.db_path())?;
             store.initialize()?;
 
+            let token_file = config.data_dir.join(".admin_token");
+
             if !store.has_admin_token()? {
                 let generator = TokenGenerator::new();
                 let (raw_token, lookup, hash) = generator.generate()?;
@@ -80,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
                 };
 
                 store.create_token(&token)?;
+                fs::write(&token_file, &raw_token)?;
 
                 println!();
                 println!("========================================");
@@ -87,8 +90,11 @@ async fn main() -> anyhow::Result<()> {
                 println!();
                 println!("  {raw_token}");
                 println!();
+                println!("Token also written to: {}", token_file.display());
                 println!("========================================");
                 println!();
+            } else if token_file.exists() {
+                info!("Admin token available at {}", token_file.display());
             }
 
             let state = Arc::new(AppState {

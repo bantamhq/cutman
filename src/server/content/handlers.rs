@@ -120,7 +120,7 @@ pub async fn list_refs(
         }
     });
 
-    Ok(Json(refs))
+    Ok(Json(ApiResponse::success(refs)))
 }
 
 pub async fn list_commits(
@@ -407,7 +407,7 @@ async fn get_tree_impl(
     let mut entries = build_tree_entries(&git_repo, &tree, &base_path, depth);
     sort_tree_entries(&mut entries);
 
-    Ok(Json(entries))
+    Ok(Json(ApiResponse::success(entries)))
 }
 
 fn build_tree_entries(
