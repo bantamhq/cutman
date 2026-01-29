@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,9 +15,9 @@ pub struct CredentialsFile {
 }
 
 pub fn credentials_path() -> anyhow::Result<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "cutman")
-        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory. Is $HOME set?"))?;
-    Ok(dirs.config_dir().join("credentials.toml"))
+    let home = std::env::var("HOME")
+        .map_err(|_| anyhow::anyhow!("Could not determine home directory. Is $HOME set?"))?;
+    Ok(PathBuf::from(home).join(".config/cutman/credentials.toml"))
 }
 
 pub fn load_credentials() -> anyhow::Result<Credentials> {

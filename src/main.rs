@@ -18,6 +18,7 @@ use cutman::cli::{
     run_repo_delete, run_repo_tag, run_tag_create, run_tag_delete, run_token_create,
     run_token_revoke, run_user_add, run_user_remove,
 };
+use cutman::tui::run_manage;
 use cutman::config::{ServerConfig, ServerConfigOverrides};
 use cutman::server::{AppState, create_router};
 use cutman::store::{SqliteStore, Store};
@@ -122,6 +123,13 @@ enum Commands {
     Credential {
         #[command(subcommand)]
         command: Option<CredentialCommands>,
+    },
+
+    /// Launch interactive folder/repo management TUI
+    Manage {
+        /// Workspace to manage (defaults to primary namespace)
+        #[arg(long, short)]
+        workspace: Option<String>,
     },
 }
 
@@ -439,6 +447,9 @@ fn main() -> anyhow::Result<()> {
                 print_credential_help();
             }
         },
+        Commands::Manage { workspace } => {
+            run_manage(workspace)?;
+        }
     }
 
     Ok(())

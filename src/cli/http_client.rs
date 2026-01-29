@@ -16,6 +16,7 @@ pub struct NamespaceWithPrimary {
     pub is_primary: bool,
 }
 
+#[derive(Clone)]
 pub struct ApiClient {
     client: Client,
     base_url: String,
@@ -88,6 +89,21 @@ impl ApiClient {
         let resp = self
             .client
             .put(&url)
+            .bearer_auth(&self.token)
+            .json(body)
+            .send()?;
+        self.handle_response(resp)
+    }
+
+    pub fn patch<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> anyhow::Result<T> {
+        let url = format!("{}/api/v1{}", self.base_url, path);
+        let resp = self
+            .client
+            .patch(&url)
             .bearer_auth(&self.token)
             .json(body)
             .send()?;
