@@ -5,5 +5,4 @@ pub mod error;
 pub mod lfs;
 pub mod server;
 pub mod store;
-pub mod tui;
 pub mod types;

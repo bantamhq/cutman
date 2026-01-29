@@ -59,7 +59,6 @@ pub struct TreeEntryResponse {
     pub children: Vec<TreeEntryResponse>,
 }
 
-
 #[derive(Debug, Serialize)]
 pub struct DiffResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,7 +123,6 @@ pub struct ListCommitsParams {
 pub struct TreeParams {
     pub depth: Option<i32>,
 }
-
 
 #[derive(Debug, Deserialize)]
 pub struct ArchiveParams {

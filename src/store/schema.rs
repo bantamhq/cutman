@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS repos (
     public INTEGER DEFAULT 0,  -- If 1, anonymous read access allowed
 
     -- Folder assignment (one-to-many, repo belongs to one folder)
-    folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
+    folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
 
     -- Stats
     size_bytes INTEGER DEFAULT 0,
@@ -99,16 +99,15 @@ CREATE TABLE IF NOT EXISTS repo_tags (
     PRIMARY KEY (repo_id, tag_id)
 );
 
--- Folders for organizing repos (hierarchical, one-to-many)
+-- Folders for organizing repos using materialized paths (e.g., "/engineering/backend")
 CREATE TABLE IF NOT EXISTS folders (
-    id TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     namespace_id TEXT NOT NULL REFERENCES namespaces(id) ON DELETE CASCADE,
-    parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
+    path TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
 
-    UNIQUE(namespace_id, parent_id, name)
+    UNIQUE(namespace_id, path)
 );
 
 -- LFS objects
@@ -126,8 +125,7 @@ CREATE INDEX IF NOT EXISTS idx_repos_folder ON repos(folder_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_lookup ON tokens(token_lookup);
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_tags_namespace ON tags(namespace_id);
-CREATE INDEX IF NOT EXISTS idx_folders_namespace ON folders(namespace_id);
-CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
+CREATE INDEX IF NOT EXISTS idx_folders_namespace_path ON folders(namespace_id, path);
 CREATE INDEX IF NOT EXISTS idx_lfs_objects_repo ON lfs_objects(repo_id);
 CREATE INDEX IF NOT EXISTS idx_namespace_grants_user ON user_namespace_grants(user_id);
 CREATE INDEX IF NOT EXISTS idx_repo_grants_user ON user_repo_grants(user_id);

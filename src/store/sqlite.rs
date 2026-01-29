@@ -724,35 +724,18 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn create_folder(&self, folder: &Folder) -> Result<()> {
-        self.conn().execute(
-            "INSERT INTO folders (id, namespace_id, parent_id, name, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                folder.id,
-                folder.namespace_id,
-                folder.parent_id,
-                folder.name,
-                format_datetime(&folder.created_at),
-                format_datetime(&folder.updated_at),
-            ],
-        )?;
-        Ok(())
-    }
-
-    fn get_folder_by_id(&self, id: &str) -> Result<Option<Folder>> {
+    fn get_folder_by_id(&self, id: i64) -> Result<Option<Folder>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, namespace_id, parent_id, name, created_at, updated_at FROM folders WHERE id = ?1",
+            "SELECT id, namespace_id, path, created_at, updated_at FROM folders WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Folder {
                     id: row.get(0)?,
                     namespace_id: row.get(1)?,
-                    parent_id: row.get(2)?,
-                    name: row.get(3)?,
-                    created_at: parse_datetime(&row.get::<_, String>(4)?),
-                    updated_at: parse_datetime(&row.get::<_, String>(5)?),
+                    path: row.get(2)?,
+                    created_at: parse_datetime(&row.get::<_, String>(3)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(4)?),
                 })
             },
         )
@@ -760,117 +743,87 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn get_folder_by_name(
-        &self,
-        namespace_id: &str,
-        parent_id: Option<&str>,
-        name: &str,
-    ) -> Result<Option<Folder>> {
+    fn get_folder_by_path(&self, namespace_id: &str, path: &str) -> Result<Option<Folder>> {
         let conn = self.conn();
-        let result = match parent_id {
-            Some(pid) => conn.query_row(
-                "SELECT id, namespace_id, parent_id, name, created_at, updated_at
-                 FROM folders WHERE namespace_id = ?1 AND parent_id = ?2 AND name = ?3",
-                params![namespace_id, pid, name],
-                |row| {
-                    Ok(Folder {
-                        id: row.get(0)?,
-                        namespace_id: row.get(1)?,
-                        parent_id: row.get(2)?,
-                        name: row.get(3)?,
-                        created_at: parse_datetime(&row.get::<_, String>(4)?),
-                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
-                    })
-                },
-            ),
-            None => conn.query_row(
-                "SELECT id, namespace_id, parent_id, name, created_at, updated_at
-                 FROM folders WHERE namespace_id = ?1 AND parent_id IS NULL AND name = ?2",
-                params![namespace_id, name],
-                |row| {
-                    Ok(Folder {
-                        id: row.get(0)?,
-                        namespace_id: row.get(1)?,
-                        parent_id: row.get(2)?,
-                        name: row.get(3)?,
-                        created_at: parse_datetime(&row.get::<_, String>(4)?),
-                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
-                    })
-                },
-            ),
-        };
-        result.optional().map_err(Error::from)
+        conn.query_row(
+            "SELECT id, namespace_id, path, created_at, updated_at
+             FROM folders WHERE namespace_id = ?1 AND path = ?2",
+            params![namespace_id, path],
+            |row| {
+                Ok(Folder {
+                    id: row.get(0)?,
+                    namespace_id: row.get(1)?,
+                    path: row.get(2)?,
+                    created_at: parse_datetime(&row.get::<_, String>(3)?),
+                    updated_at: parse_datetime(&row.get::<_, String>(4)?),
+                })
+            },
+        )
+        .optional()
+        .map_err(Error::from)
     }
 
-    fn list_folders(
-        &self,
-        namespace_id: &str,
-        parent_id: Option<&str>,
-        cursor: &str,
-        limit: i32,
-    ) -> Result<Vec<Folder>> {
-        let conn = self.conn();
-        let mut folders = Vec::new();
+    fn ensure_folder_path(&self, namespace_id: &str, path: &str) -> Result<i64> {
+        use super::path::normalize_path;
 
-        match parent_id {
-            Some(pid) => {
-                let mut stmt = conn.prepare(
-                    "SELECT id, namespace_id, parent_id, name, created_at, updated_at
-                     FROM folders WHERE namespace_id = ?1 AND parent_id = ?2 AND name > ?3 ORDER BY name LIMIT ?4",
-                )?;
-                let rows = stmt.query_map(params![namespace_id, pid, cursor, limit], |row| {
-                    Ok(Folder {
-                        id: row.get(0)?,
-                        namespace_id: row.get(1)?,
-                        parent_id: row.get(2)?,
-                        name: row.get(3)?,
-                        created_at: parse_datetime(&row.get::<_, String>(4)?),
-                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
-                    })
-                })?;
-                for row in rows {
-                    folders.push(row?);
+        let normalized = normalize_path(path)?;
+
+        if let Some(folder) = self.get_folder_by_path(namespace_id, &normalized)? {
+            return Ok(folder.id);
+        }
+
+        let segments: Vec<&str> = normalized.trim_start_matches('/').split('/').collect();
+
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+
+        let mut current_path = String::new();
+        let mut last_id: i64 = 0;
+
+        for segment in segments {
+            current_path = format!("{}/{}", current_path, segment);
+
+            let existing: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM folders WHERE namespace_id = ?1 AND path = ?2",
+                    params![namespace_id, current_path],
+                    |row| row.get(0),
+                )
+                .optional()?;
+
+            match existing {
+                Some(id) => {
+                    last_id = id;
                 }
-            }
-            None => {
-                let mut stmt = conn.prepare(
-                    "SELECT id, namespace_id, parent_id, name, created_at, updated_at
-                     FROM folders WHERE namespace_id = ?1 AND parent_id IS NULL AND name > ?2 ORDER BY name LIMIT ?3",
-                )?;
-                let rows = stmt.query_map(params![namespace_id, cursor, limit], |row| {
-                    Ok(Folder {
-                        id: row.get(0)?,
-                        namespace_id: row.get(1)?,
-                        parent_id: row.get(2)?,
-                        name: row.get(3)?,
-                        created_at: parse_datetime(&row.get::<_, String>(4)?),
-                        updated_at: parse_datetime(&row.get::<_, String>(5)?),
-                    })
-                })?;
-                for row in rows {
-                    folders.push(row?);
+                None => {
+                    tx.execute(
+                        "INSERT INTO folders (namespace_id, path, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?3)",
+                        params![namespace_id, current_path, format_datetime(&Utc::now())],
+                    )?;
+                    last_id = tx.last_insert_rowid();
                 }
             }
         }
 
-        Ok(folders)
+        tx.commit()?;
+        Ok(last_id)
     }
 
-    fn list_folder_children(&self, folder_id: &str) -> Result<Vec<Folder>> {
+    fn list_all_folders(&self, namespace_id: &str) -> Result<Vec<Folder>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT id, namespace_id, parent_id, name, created_at, updated_at
-             FROM folders WHERE parent_id = ?1 ORDER BY name",
+            "SELECT id, namespace_id, path, created_at, updated_at
+             FROM folders WHERE namespace_id = ?1 ORDER BY path",
         )?;
 
-        let rows = stmt.query_map(params![folder_id], |row| {
+        let rows = stmt.query_map(params![namespace_id], |row| {
             Ok(Folder {
                 id: row.get(0)?,
                 namespace_id: row.get(1)?,
-                parent_id: row.get(2)?,
-                name: row.get(3)?,
-                created_at: parse_datetime(&row.get::<_, String>(4)?),
-                updated_at: parse_datetime(&row.get::<_, String>(5)?),
+                path: row.get(2)?,
+                created_at: parse_datetime(&row.get::<_, String>(3)?),
+                updated_at: parse_datetime(&row.get::<_, String>(4)?),
             })
         })?;
 
@@ -878,123 +831,94 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn list_folder_ancestors(&self, folder_id: &str) -> Result<Vec<Folder>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "WITH RECURSIVE ancestors AS (
-                SELECT id, namespace_id, parent_id, name, created_at, updated_at, 0 as depth
-                FROM folders WHERE id = ?1
-                UNION ALL
-                SELECT f.id, f.namespace_id, f.parent_id, f.name, f.created_at, f.updated_at, a.depth + 1
-                FROM folders f
-                JOIN ancestors a ON f.id = a.parent_id
-            )
-            SELECT id, namespace_id, parent_id, name, created_at, updated_at
-            FROM ancestors WHERE depth > 0 ORDER BY depth DESC",
+    fn move_folder(&self, id: i64, new_path: &str) -> Result<()> {
+        use super::path::normalize_path;
+
+        let normalized_new = normalize_path(new_path)?;
+
+        let folder = self.get_folder_by_id(id)?.ok_or(Error::NotFound)?;
+
+        if normalized_new.starts_with(&format!("{}/", folder.path)) {
+            return Err(Error::BadRequest(
+                "Cannot move folder into itself or its descendants".to_string(),
+            ));
+        }
+
+        if let Some(existing) = self.get_folder_by_path(&folder.namespace_id, &normalized_new)? {
+            if existing.id != id {
+                return Err(Error::Conflict(format!(
+                    "Folder already exists at path '{}'",
+                    normalized_new
+                )));
+            }
+        }
+
+        let old_path = &folder.path;
+        let old_prefix = format!("{}/", old_path);
+        let new_prefix = format!("{}/", normalized_new);
+
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let now = format_datetime(&Utc::now());
+
+        tx.execute(
+            "UPDATE folders SET path = ?1, updated_at = ?2 WHERE id = ?3",
+            params![normalized_new, now, id],
         )?;
 
-        let rows = stmt.query_map(params![folder_id], |row| {
-            Ok(Folder {
-                id: row.get(0)?,
-                namespace_id: row.get(1)?,
-                parent_id: row.get(2)?,
-                name: row.get(3)?,
-                created_at: parse_datetime(&row.get::<_, String>(4)?),
-                updated_at: parse_datetime(&row.get::<_, String>(5)?),
-            })
-        })?;
-
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(Error::from)
-    }
-
-    fn update_folder(&self, folder: &Folder) -> Result<()> {
-        let rows = self.conn().execute(
-            "UPDATE folders SET name = ?1, parent_id = ?2, updated_at = ?3 WHERE id = ?4",
+        tx.execute(
+            "UPDATE folders SET path = ?1 || substr(path, ?2), updated_at = ?3
+             WHERE namespace_id = ?4 AND path LIKE ?5",
             params![
-                folder.name,
-                folder.parent_id,
-                format_datetime(&Utc::now()),
-                folder.id
+                new_prefix.trim_end_matches('/'),
+                old_prefix.len() as i32,
+                now,
+                folder.namespace_id,
+                format!("{}%", old_prefix)
             ],
         )?;
 
-        if rows == 0 {
-            return Err(Error::NotFound);
-        }
+        tx.commit()?;
         Ok(())
     }
 
-    fn move_folder(&self, folder_id: &str, new_parent_id: Option<&str>) -> Result<()> {
-        let rows = self.conn().execute(
-            "UPDATE folders SET parent_id = ?1, updated_at = ?2 WHERE id = ?3",
-            params![new_parent_id, format_datetime(&Utc::now()), folder_id],
+    fn delete_folder(&self, id: i64) -> Result<bool> {
+        let folder = match self.get_folder_by_id(id)? {
+            Some(f) => f,
+            None => return Ok(false),
+        };
+
+        let path_prefix = format!("{}/", folder.path);
+
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "UPDATE repos SET folder_id = NULL, updated_at = ?1
+             WHERE folder_id IN (
+                 SELECT id FROM folders
+                 WHERE namespace_id = ?2 AND (path = ?3 OR path LIKE ?4)
+             )",
+            params![
+                format_datetime(&Utc::now()),
+                folder.namespace_id,
+                folder.path,
+                format!("{}%", path_prefix)
+            ],
         )?;
 
-        if rows == 0 {
-            return Err(Error::NotFound);
-        }
-        Ok(())
+        tx.execute(
+            "DELETE FROM folders WHERE namespace_id = ?1 AND path LIKE ?2",
+            params![folder.namespace_id, format!("{}%", path_prefix)],
+        )?;
+
+        let rows = tx.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+
+        tx.commit()?;
+        Ok(rows > 0)
     }
 
-    fn delete_folder(&self, id: &str, recursive: bool) -> Result<bool> {
-        if recursive {
-            let rows = self.conn().execute(
-                "WITH RECURSIVE descendants AS (
-                    SELECT id FROM folders WHERE id = ?1
-                    UNION ALL
-                    SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id
-                )
-                DELETE FROM folders WHERE id IN (SELECT id FROM descendants)",
-                params![id],
-            )?;
-            Ok(rows > 0)
-        } else {
-            let rows = self
-                .conn()
-                .execute("DELETE FROM folders WHERE id = ?1", params![id])?;
-            Ok(rows > 0)
-        }
-    }
-
-    fn get_folder_path(&self, folder_id: &str) -> Result<String> {
-        let ancestors = self.list_folder_ancestors(folder_id)?;
-        let folder = self.get_folder_by_id(folder_id)?;
-
-        match folder {
-            Some(f) => {
-                let mut path_parts: Vec<&str> = ancestors.iter().map(|a| a.name.as_str()).collect();
-                path_parts.push(&f.name);
-                Ok(path_parts.join("/"))
-            }
-            None => Err(Error::NotFound),
-        }
-    }
-
-    fn count_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<i32> {
-        let conn = self.conn();
-        let count: i32 = if recursive {
-            conn.query_row(
-                "WITH RECURSIVE descendants AS (
-                    SELECT id FROM folders WHERE id = ?1
-                    UNION ALL
-                    SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id
-                )
-                SELECT COUNT(*) FROM repos WHERE folder_id IN (SELECT id FROM descendants)",
-                params![folder_id],
-                |row| row.get(0),
-            )?
-        } else {
-            conn.query_row(
-                "SELECT COUNT(*) FROM repos WHERE folder_id = ?1",
-                params![folder_id],
-                |row| row.get(0),
-            )?
-        };
-        Ok(count)
-    }
-
-    fn set_repo_folder(&self, repo_id: &str, folder_id: Option<&str>) -> Result<()> {
+    fn set_repo_folder(&self, repo_id: &str, folder_id: Option<i64>) -> Result<()> {
         let rows = self.conn().execute(
             "UPDATE repos SET folder_id = ?1, updated_at = ?2 WHERE id = ?3",
             params![folder_id, format_datetime(&Utc::now()), repo_id],
@@ -1006,44 +930,80 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn list_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<Vec<Repo>> {
+    fn set_repo_folder_by_path(
+        &self,
+        repo_id: &str,
+        namespace_id: &str,
+        path: Option<&str>,
+    ) -> Result<Option<i64>> {
+        match path {
+            Some(p) => {
+                let folder_id = self.ensure_folder_path(namespace_id, p)?;
+                self.set_repo_folder(repo_id, Some(folder_id))?;
+                Ok(Some(folder_id))
+            }
+            None => {
+                self.set_repo_folder(repo_id, None)?;
+                Ok(None)
+            }
+        }
+    }
+
+    fn list_folder_repos(
+        &self,
+        namespace_id: &str,
+        path: &str,
+        recursive: bool,
+    ) -> Result<Vec<Repo>> {
+        use super::path::normalize_path;
+
+        let normalized = normalize_path(path)?;
         let conn = self.conn();
 
         if recursive {
+            // Match exact path or any path that starts with path/
+            let path_prefix = format!("{}/", normalized);
             let mut stmt = conn.prepare(
-                "WITH RECURSIVE descendants AS (
-                    SELECT id FROM folders WHERE id = ?1
-                    UNION ALL
-                    SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id
-                )
-                SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
-                FROM repos r WHERE r.folder_id IN (SELECT id FROM descendants) ORDER BY r.name",
+                "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id,
+                        r.size_bytes, r.last_push_at, r.created_at, r.updated_at
+                 FROM repos r
+                 JOIN folders f ON r.folder_id = f.id
+                 WHERE f.namespace_id = ?1 AND (f.path = ?2 OR f.path LIKE ?3)
+                 ORDER BY r.name",
             )?;
 
-            let rows = stmt.query_map(params![folder_id], |row| {
-                Ok(Repo {
-                    id: row.get(0)?,
-                    namespace_id: row.get(1)?,
-                    name: row.get(2)?,
-                    description: row.get(3)?,
-                    public: row.get(4)?,
-                    folder_id: row.get(5)?,
-                    size_bytes: row.get(6)?,
-                    last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
-                    created_at: parse_datetime(&row.get::<_, String>(8)?),
-                    updated_at: parse_datetime(&row.get::<_, String>(9)?),
-                })
-            })?;
+            let rows = stmt.query_map(
+                params![namespace_id, normalized, format!("{}%", path_prefix)],
+                |row| {
+                    Ok(Repo {
+                        id: row.get(0)?,
+                        namespace_id: row.get(1)?,
+                        name: row.get(2)?,
+                        description: row.get(3)?,
+                        public: row.get(4)?,
+                        folder_id: row.get(5)?,
+                        size_bytes: row.get(6)?,
+                        last_push_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+                        created_at: parse_datetime(&row.get::<_, String>(8)?),
+                        updated_at: parse_datetime(&row.get::<_, String>(9)?),
+                    })
+                },
+            )?;
 
             rows.collect::<std::result::Result<Vec<_>, _>>()
                 .map_err(Error::from)
         } else {
+            // Match exact path only
             let mut stmt = conn.prepare(
-                "SELECT id, namespace_id, name, description, public, folder_id, size_bytes, last_push_at, created_at, updated_at
-                 FROM repos WHERE folder_id = ?1 ORDER BY name",
+                "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id,
+                        r.size_bytes, r.last_push_at, r.created_at, r.updated_at
+                 FROM repos r
+                 JOIN folders f ON r.folder_id = f.id
+                 WHERE f.namespace_id = ?1 AND f.path = ?2
+                 ORDER BY r.name",
             )?;
 
-            let rows = stmt.query_map(params![folder_id], |row| {
+            let rows = stmt.query_map(params![namespace_id, normalized], |row| {
                 Ok(Repo {
                     id: row.get(0)?,
                     namespace_id: row.get(1)?,

@@ -536,7 +536,9 @@ fn remove_from_tree_recursive(
         } else {
             builder
                 .insert(subdir, new_subtree_oid, 0o040000)
-                .map_err(|e| GitError::Internal(format!("Failed to insert updated subtree: {e}")))?;
+                .map_err(|e| {
+                    GitError::Internal(format!("Failed to insert updated subtree: {e}"))
+                })?;
         }
     }
 
@@ -582,10 +584,24 @@ pub fn create_commit_on_branch(
 /// Action to apply in a multi-file commit
 #[derive(Debug)]
 pub enum CommitActionOp {
-    Create { path: String, content: Vec<u8> },
-    Update { path: String, content: Vec<u8>, sha: Option<String> },
-    Delete { path: String, sha: String },
-    Move { from: String, to: String, sha: Option<String> },
+    Create {
+        path: String,
+        content: Vec<u8>,
+    },
+    Update {
+        path: String,
+        content: Vec<u8>,
+        sha: Option<String>,
+    },
+    Delete {
+        path: String,
+        sha: String,
+    },
+    Move {
+        from: String,
+        to: String,
+        sha: Option<String>,
+    },
 }
 
 /// Apply multiple actions to create a new tree, then commit.
@@ -611,16 +627,24 @@ pub fn apply_actions(
     for action in actions {
         current_tree_oid = Some(apply_single_action(
             repo,
-            current_tree_oid.and_then(|oid| repo.find_tree(oid).ok()).as_ref(),
+            current_tree_oid
+                .and_then(|oid| repo.find_tree(oid).ok())
+                .as_ref(),
             action,
         )?);
     }
 
-    let final_tree_oid = current_tree_oid.ok_or_else(|| {
-        GitError::Internal("No tree after applying actions".to_string())
-    })?;
+    let final_tree_oid = current_tree_oid
+        .ok_or_else(|| GitError::Internal("No tree after applying actions".to_string()))?;
 
-    create_commit_on_branch(repo, branch, final_tree_oid, message, author_name, author_email)
+    create_commit_on_branch(
+        repo,
+        branch,
+        final_tree_oid,
+        message,
+        author_name,
+        author_email,
+    )
 }
 
 fn apply_single_action(
@@ -663,9 +687,9 @@ fn apply_single_action(
             let content = blob.content().to_vec();
 
             let intermediate_tree_oid = tree_without_entry(repo, tree, from)?;
-            let intermediate_tree = repo
-                .find_tree(intermediate_tree_oid)
-                .map_err(|e| GitError::Internal(format!("Failed to find intermediate tree: {e}")))?;
+            let intermediate_tree = repo.find_tree(intermediate_tree_oid).map_err(|e| {
+                GitError::Internal(format!("Failed to find intermediate tree: {e}"))
+            })?;
 
             tree_with_blob(repo, Some(&intermediate_tree), to, &content)
         }
@@ -758,8 +782,8 @@ pub fn get_file_history(
             break;
         }
 
-        let commit_oid = oid_result
-            .map_err(|e| GitError::Internal(format!("Revwalk error: {e}")))?;
+        let commit_oid =
+            oid_result.map_err(|e| GitError::Internal(format!("Revwalk error: {e}")))?;
 
         let commit = get_commit(repo, commit_oid)?;
 

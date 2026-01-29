@@ -51,7 +51,7 @@ pub struct Repo {
     pub public: bool,
     pub size_bytes: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub folder_id: Option<String>,
+    pub folder_id: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_push_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -70,13 +70,26 @@ pub struct Tag {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Folder {
-    pub id: String,
+    pub id: i64,
     pub namespace_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<String>,
-    pub name: String,
+    pub path: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Folder {
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.path.rsplit('/').next().unwrap_or(&self.path)
+    }
+
+    #[must_use]
+    pub fn parent_path(&self) -> Option<&str> {
+        self.path
+            .rsplit_once('/')
+            .map(|(parent, _)| parent)
+            .filter(|p| !p.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

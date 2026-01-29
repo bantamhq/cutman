@@ -387,9 +387,11 @@ fn user_remove_leaves_other_users_tokens_and_grants_intact() {
     ctx.remove_user(&alice_id).success();
 
     let tokens = list_tokens_json(&ctx);
-    assert!(tokens
-        .iter()
-        .any(|t| t["user_id"].as_str() == Some(&bob_id)));
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t["user_id"].as_str() == Some(&bob_id))
+    );
 
     let grants = list_grants_json(&ctx);
     assert!(grants.iter().any(|g| g["user_id"] == bob_id));
@@ -1176,10 +1178,12 @@ fn permission_repo_grant_and_revoke_work() {
         .success();
 
     let store = open_store(&ctx);
-    assert!(store
-        .get_repo_grant(&user_id, &repo_id)
-        .expect("get repo grant")
-        .is_some());
+    assert!(
+        store
+            .get_repo_grant(&user_id, &repo_id)
+            .expect("get repo grant")
+            .is_some()
+    );
 
     ctx.cmd()
         .args([
@@ -1199,10 +1203,12 @@ fn permission_repo_grant_and_revoke_work() {
         .success();
 
     let store = open_store(&ctx);
-    assert!(store
-        .get_repo_grant(&user_id, &repo_id)
-        .expect("get repo grant")
-        .is_none());
+    assert!(
+        store
+            .get_repo_grant(&user_id, &repo_id)
+            .expect("get repo grant")
+            .is_none()
+    );
 }
 
 // ============================================================================

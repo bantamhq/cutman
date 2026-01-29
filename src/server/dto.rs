@@ -131,9 +131,7 @@ pub struct UpdateTagRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateFolderRequest {
-    pub name: String,
-    #[serde(default)]
-    pub parent_id: Option<String>,
+    pub path: String,
     #[serde(default)]
     pub namespace: Option<String>,
 }
@@ -141,9 +139,7 @@ pub struct CreateFolderRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateFolderRequest {
     #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub parent_id: Option<String>,
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -174,27 +170,21 @@ pub struct ListTagsParams {
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub struct DeleteFolderParams {
-    #[serde(default)]
-    pub force: Option<bool>,
-    #[serde(default)]
-    pub recursive: Option<bool>,
-}
-
-#[derive(Debug, Default, Deserialize)]
 pub struct ListFoldersParams {
     #[serde(default)]
     pub namespace: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ListFolderReposParams {
     #[serde(default)]
-    pub parent_id: Option<String>,
-    #[serde(default)]
-    pub cursor: Option<String>,
+    pub recursive: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SetRepoFolderRequest {
     #[serde(default)]
-    pub folder_id: Option<String>,
+    pub folder_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

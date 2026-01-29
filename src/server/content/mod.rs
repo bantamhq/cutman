@@ -29,10 +29,7 @@ pub fn content_router() -> Router<Arc<AppState>> {
             put(handlers::set_default_branch_handler),
         )
         .route("/repos/{id}/commits", get(handlers::list_commits))
-        .route(
-            "/repos/{id}/commits",
-            post(handlers::create_multi_commit),
-        )
+        .route("/repos/{id}/commits", post(handlers::create_multi_commit))
         .route(
             "/repos/{id}/commits/{sha}",
             get(handlers::get_commit_handler),

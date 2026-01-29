@@ -6,29 +6,17 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use chrono::Utc;
-use serde::Serialize;
-use uuid::Uuid;
 
 use crate::auth::RequireUser;
 use crate::server::AppState;
 use crate::server::dto::{
-    CreateFolderRequest, DeleteFolderParams, ListFoldersParams, UpdateFolderRequest,
+    CreateFolderRequest, ListFolderReposParams, ListFoldersParams, UpdateFolderRequest,
 };
-use crate::server::response::{
-    ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, StoreOptionExt, StoreResultExt,
-    paginate,
-};
-use crate::types::{Folder, Permission};
+use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
+use crate::store::path::normalize_path;
+use crate::types::Permission;
 
 use super::access::{require_namespace_permission, resolve_namespace_id};
-
-#[derive(Debug, Serialize)]
-pub struct FolderWithPath {
-    #[serde(flatten)]
-    pub folder: Folder,
-    pub path: String,
-}
 
 pub async fn list_folders(
     auth: RequireUser,
@@ -38,23 +26,14 @@ pub async fn list_folders(
     let user = &auth.user;
     let store = state.store.as_ref();
     let ns_id = resolve_namespace_id(store, user, params.namespace.as_deref())?;
-    let cursor = params.cursor.as_deref().unwrap_or("");
 
     require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_READ)?;
 
     let folders = store
-        .list_folders(
-            &ns_id,
-            params.parent_id.as_deref(),
-            cursor,
-            DEFAULT_PAGE_SIZE + 1,
-        )
+        .list_all_folders(&ns_id)
         .api_err("Failed to list folders")?;
 
-    let (folders, next_cursor, has_more) =
-        paginate(folders, DEFAULT_PAGE_SIZE as usize, |f| f.name.clone());
-
-    Ok::<_, ApiError>(Json(PaginatedResponse::new(folders, next_cursor, has_more)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(folders)))
 }
 
 pub async fn create_folder(
@@ -68,40 +47,25 @@ pub async fn create_folder(
 
     require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_WRITE)?;
 
-    if let Some(parent_id) = &req.parent_id {
-        let parent = store
-            .get_folder_by_id(parent_id)
-            .api_err("Failed to get parent folder")?
-            .or_not_found("Parent folder not found")?;
-
-        if parent.namespace_id != ns_id {
-            return Err(ApiError::bad_request(
-                "Parent folder must belong to the same namespace",
-            ));
-        }
-    }
+    let normalized_path =
+        normalize_path(&req.path).map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     if store
-        .get_folder_by_name(&ns_id, req.parent_id.as_deref(), &req.name)
+        .get_folder_by_path(&ns_id, &normalized_path)
         .api_err("Failed to check folder")?
         .is_some()
     {
-        return Err(ApiError::conflict("Folder already exists"));
+        return Err(ApiError::conflict("Folder already exists at this path"));
     }
 
-    let now = Utc::now();
-    let folder = Folder {
-        id: Uuid::new_v4().to_string(),
-        namespace_id: ns_id,
-        parent_id: req.parent_id,
-        name: req.name,
-        created_at: now,
-        updated_at: now,
-    };
-
-    store
-        .create_folder(&folder)
+    let folder_id = store
+        .ensure_folder_path(&ns_id, &normalized_path)
         .api_err("Failed to create folder")?;
+
+    let folder = store
+        .get_folder_by_id(folder_id)
+        .api_err("Failed to get created folder")?
+        .or_not_found("Created folder not found")?;
 
     Ok::<_, ApiError>((StatusCode::CREATED, Json(ApiResponse::success(folder))))
 }
@@ -109,13 +73,13 @@ pub async fn create_folder(
 pub async fn get_folder(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
+    Path(id): Path<i64>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
 
     let folder = store
-        .get_folder_by_id(&id)
+        .get_folder_by_id(id)
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
@@ -126,26 +90,20 @@ pub async fn get_folder(
         Permission::NAMESPACE_READ,
     )?;
 
-    let path = store
-        .get_folder_path(&folder.id)
-        .api_err("Failed to get folder path")?;
-
-    let response = FolderWithPath { folder, path };
-
-    Ok::<_, ApiError>(Json(ApiResponse::success(response)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(folder)))
 }
 
 pub async fn update_folder(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
+    Path(id): Path<i64>,
     Json(req): Json<UpdateFolderRequest>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
 
-    let mut folder = store
-        .get_folder_by_id(&id)
+    let folder = store
+        .get_folder_by_id(id)
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
@@ -156,68 +114,35 @@ pub async fn update_folder(
         Permission::NAMESPACE_WRITE,
     )?;
 
-    if let Some(ref parent_id) = req.parent_id {
-        if parent_id == &folder.id {
-            return Err(ApiError::bad_request("Folder cannot be its own parent"));
-        }
+    if let Some(new_path) = req.path {
+        let normalized =
+            normalize_path(&new_path).map_err(|e| ApiError::bad_request(e.to_string()))?;
 
-        let parent = store
-            .get_folder_by_id(parent_id)
-            .api_err("Failed to get parent folder")?
-            .or_not_found("Parent folder not found")?;
-
-        if parent.namespace_id != folder.namespace_id {
-            return Err(ApiError::bad_request(
-                "Parent folder must belong to the same namespace",
-            ));
-        }
-
-        let ancestors = store
-            .list_folder_ancestors(parent_id)
-            .api_err("Failed to check for cycles")?;
-        if ancestors.iter().any(|a| a.id == folder.id) {
-            return Err(ApiError::bad_request("Moving folder would create a cycle"));
-        }
+        store.move_folder(id, &normalized).map_err(|e| match e {
+            crate::error::Error::BadRequest(msg) => ApiError::bad_request(&msg),
+            crate::error::Error::Conflict(msg) => ApiError::conflict(&msg),
+            _ => ApiError::internal(e.to_string()),
+        })?;
     }
 
-    let new_parent_id = req.parent_id.clone().or(folder.parent_id.clone());
+    let updated_folder = store
+        .get_folder_by_id(id)
+        .api_err("Failed to get updated folder")?
+        .or_not_found("Folder not found after update")?;
 
-    if let Some(name) = req.name {
-        if name != folder.name
-            && store
-                .get_folder_by_name(&folder.namespace_id, new_parent_id.as_deref(), &name)
-                .api_err("Failed to check folder name")?
-                .is_some()
-        {
-            return Err(ApiError::conflict(
-                "Folder name already exists in this location",
-            ));
-        }
-        folder.name = name;
-    }
-
-    if req.parent_id.is_some() {
-        folder.parent_id = req.parent_id;
-    }
-
-    store
-        .update_folder(&folder)
-        .api_err("Failed to update folder")?;
-
-    Ok::<_, ApiError>(Json(ApiResponse::success(folder)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(updated_folder)))
 }
 
 pub async fn delete_folder(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-    Query(params): Query<DeleteFolderParams>,
+    Path(id): Path<i64>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
 
     let folder = store
-        .get_folder_by_id(&id)
+        .get_folder_by_id(id)
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
@@ -228,72 +153,22 @@ pub async fn delete_folder(
         Permission::NAMESPACE_ADMIN,
     )?;
 
-    let recursive = params.recursive == Some(true);
-
-    let repo_count = store
-        .count_folder_repos(&folder.id, recursive)
-        .api_err("Failed to count folder repos")?;
-
-    if repo_count > 0 && params.force != Some(true) {
-        return Err(ApiError::conflict(
-            "Folder has repos associated. Use ?force=true to delete anyway",
-        ));
-    }
-
-    let children = store
-        .list_folder_children(&folder.id)
-        .api_err("Failed to list children")?;
-
-    if !children.is_empty() && !recursive {
-        return Err(ApiError::conflict(
-            "Folder has subfolders. Use ?recursive=true to delete recursively",
-        ));
-    }
-
-    store
-        .delete_folder(&folder.id, recursive)
-        .api_err("Failed to delete folder")?;
+    store.delete_folder(id).api_err("Failed to delete folder")?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
-}
-
-pub async fn list_folder_children(
-    auth: RequireUser,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
-    let user = &auth.user;
-    let store = state.store.as_ref();
-
-    let folder = store
-        .get_folder_by_id(&id)
-        .api_err("Failed to get folder")?
-        .or_not_found("Folder not found")?;
-
-    require_namespace_permission(
-        store,
-        user,
-        &folder.namespace_id,
-        Permission::NAMESPACE_READ,
-    )?;
-
-    let children = store
-        .list_folder_children(&folder.id)
-        .api_err("Failed to list folder children")?;
-
-    Ok::<_, ApiError>(Json(ApiResponse::success(children)))
 }
 
 pub async fn list_folder_repos(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
+    Path(id): Path<i64>,
+    Query(params): Query<ListFolderReposParams>,
 ) -> impl IntoResponse {
     let user = &auth.user;
     let store = state.store.as_ref();
 
     let folder = store
-        .get_folder_by_id(&id)
+        .get_folder_by_id(id)
         .api_err("Failed to get folder")?
         .or_not_found("Folder not found")?;
 
@@ -304,8 +179,9 @@ pub async fn list_folder_repos(
         Permission::NAMESPACE_READ,
     )?;
 
+    let recursive = params.recursive.unwrap_or(false);
     let repos = store
-        .list_folder_repos(&folder.id, false)
+        .list_folder_repos(&folder.namespace_id, &folder.path, recursive)
         .api_err("Failed to list folder repos")?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(repos)))

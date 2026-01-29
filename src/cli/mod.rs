@@ -2,6 +2,7 @@ mod auth;
 mod commands;
 mod credential;
 pub mod credentials;
+mod folder;
 pub mod http_client;
 mod info;
 mod namespace;
@@ -15,12 +16,13 @@ mod user;
 
 pub use auth::{run_auth_login, run_auth_logout};
 pub use commands::{
-    AdminCommands, AuthCommands, CredentialCommands, NamespaceCommands, PermissionCommands,
-    RepoCommands, TagCommands, TokenCommands, UserCommands,
+    AdminCommands, AuthCommands, CredentialCommands, FolderCommands, NamespaceCommands,
+    PermissionCommands, RepoCommands, TagCommands, TokenCommands, UserCommands,
 };
 pub use credential::{
     print_credential_help, run_credential_erase, run_credential_get, run_credential_store,
 };
+pub use folder::{run_folder_create, run_folder_delete, run_folder_list, run_folder_move};
 pub use info::run_info;
 pub use namespace::{run_namespace_add, run_namespace_remove};
 pub use new::run_new;
@@ -28,7 +30,7 @@ pub use permission::{
     run_permission_grant, run_permission_repo_grant, run_permission_repo_revoke,
     run_permission_revoke,
 };
-pub use repo::{run_repo_clone, run_repo_delete, run_repo_tag};
+pub use repo::{run_repo_clone, run_repo_delete, run_repo_move, run_repo_tag};
 pub use tag::{run_tag_create, run_tag_delete};
 pub use token::{run_token_create, run_token_revoke};
 pub use user::{run_user_add, run_user_remove};

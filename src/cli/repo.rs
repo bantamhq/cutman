@@ -6,7 +6,7 @@ use serde::Serialize;
 use super::credentials::load_credentials;
 use super::http_client::{ApiClient, NamespaceMap, PaginatedResponse};
 use super::pickers::{TagDisplay, confirm_action, repos_to_displays};
-use crate::types::{Repo, Tag};
+use crate::types::{Folder, Repo, Tag};
 
 /// Parses a repo reference in the format "namespace/name" or "name".
 /// Returns (Some(namespace), name) if namespace was explicit, (None, name) otherwise.
@@ -279,6 +279,64 @@ pub fn run_repo_tag(
 
     println!();
     println!("Updated tags on '{}/{}'", ns_name, repo.name);
+    println!();
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct SetRepoFolderRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    folder_path: Option<String>,
+}
+
+pub fn run_repo_move(
+    repo_ref: Option<String>,
+    folder_path: String,
+    non_interactive: bool,
+) -> anyhow::Result<()> {
+    let creds = load_credentials()?;
+    let client = ApiClient::new(&creds)?;
+
+    let repos_resp: PaginatedResponse<Repo> = client.get_raw("/repos")?;
+    let namespace_map = client.fetch_namespace_map()?;
+
+    let repo = match select_repo(
+        repos_resp.data,
+        repo_ref.as_deref(),
+        &namespace_map,
+        &client,
+        non_interactive,
+        "Select repository to move:",
+    )? {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
+    let ns_name = get_namespace_name(&repo, &namespace_map);
+
+    // Convert empty string to None (move to root)
+    let folder_path_opt = if folder_path.is_empty() {
+        None
+    } else {
+        Some(folder_path)
+    };
+
+    let request = SetRepoFolderRequest {
+        folder_path: folder_path_opt.clone(),
+    };
+
+    let folders: Vec<Folder> = client.post(&format!("/repos/{}/folders", repo.id), &request)?;
+
+    println!();
+    if let Some(folder) = folders.first() {
+        println!(
+            "Moved '{}/{}' to folder '{}'",
+            ns_name, repo.name, folder.path
+        );
+    } else {
+        println!("Moved '{}/{}' to root", ns_name, repo.name);
+    }
     println!();
 
     Ok(())

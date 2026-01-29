@@ -41,9 +41,9 @@ use super::git_ops::{
     CommitActionOp, GitError, apply_actions, build_diff, commit_to_response, compute_commit_stats,
     count_ahead_behind, create_commit_on_branch, create_ref, delete_ref, entry_type_str,
     file_exists, find_merge_base, get_blob_at_path, get_commit, get_default_branch,
-    get_file_history, get_tree, get_tree_at_path, is_binary, open_repo, resolve_ref,
-    search_paths, set_default_branch, signature_to_response, tree_with_blob, tree_without_entry,
-    update_ref, verify_blob_sha,
+    get_file_history, get_tree, get_tree_at_path, is_binary, open_repo, resolve_ref, search_paths,
+    set_default_branch, signature_to_response, tree_with_blob, tree_without_entry, update_ref,
+    verify_blob_sha,
 };
 
 fn repo_path(state: &AppState, namespace_id: &str, repo_name: &str) -> std::path::PathBuf {
@@ -910,7 +910,9 @@ fn decode_content(content: &str, encoding: Option<&str>) -> Result<Vec<u8>, ApiE
             .decode(content)
             .map_err(|e| ApiError::bad_request(format!("Invalid base64 content: {e}"))),
         Some("utf-8") | None => Ok(content.as_bytes().to_vec()),
-        Some(enc) => Err(ApiError::bad_request(format!("Unsupported encoding: {enc}"))),
+        Some(enc) => Err(ApiError::bad_request(format!(
+            "Unsupported encoding: {enc}"
+        ))),
     }
 }
 
@@ -1015,12 +1017,10 @@ async fn parse_multipart_upload(
                 content = Some(data.to_vec());
             }
             Some("message") => {
-                message = Some(
-                    field
-                        .text()
-                        .await
-                        .map_err(|e| ApiError::bad_request(format!("Failed to read message: {e}")))?,
-                );
+                message =
+                    Some(field.text().await.map_err(|e| {
+                        ApiError::bad_request(format!("Failed to read message: {e}"))
+                    })?);
             }
             Some("sha") => {
                 sha = Some(
@@ -1336,7 +1336,10 @@ fn parse_frontmatter(content: &str) -> Option<(serde_json::Value, String)> {
 
     let yaml_content = after_first_delim[..end_delim_pos].trim();
     let body_start = 3 + end_delim_pos + 4;
-    let body = content.get(body_start..)?.trim_start_matches('\n').to_string();
+    let body = content
+        .get(body_start..)?
+        .trim_start_matches('\n')
+        .to_string();
 
     let yaml_value: serde_yaml::Value = serde_yaml::from_str(yaml_content).ok()?;
     let json_value = yaml_to_json(yaml_value);

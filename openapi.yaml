@@ -1641,7 +1641,7 @@ paths:
       tags:
         - repos
       summary: Set the folder for a repository.
-      description: Set or change the folder for a repository. A repository can belong to at most one folder.
+      description: Set or change the folder for a repository by specifying a folder path. Missing folders are created automatically. Set folder_path to null to move the repo to root.
       operationId: addRepoToFolder
       security:
         - bearerAuth: []
@@ -1695,7 +1695,7 @@ paths:
       tags:
         - repos
       summary: Remove repository from a folder.
-      description: Remove the repository from a specific folder.
+      description: Remove the repository from a specific folder, moving it to the root.
       operationId: removeRepoFromFolder
       security:
         - bearerAuth: []
@@ -1708,10 +1708,11 @@ paths:
             type: string
         - name: folder_id
           in: path
-          description: Folder ID
+          description: Folder ID (must match the repo's current folder)
           required: true
           schema:
-            type: string
+            type: integer
+            format: int64
       responses:
         '204':
           description: Repository removed from folder
@@ -1969,26 +1970,14 @@ paths:
       tags:
         - folders
       summary: List folders.
-      description: List folders with optional namespace and parent filters.
+      description: List all folders in a namespace, sorted alphabetically by path.
       operationId: listFolders
       security:
         - bearerAuth: []
       parameters:
         - name: namespace
           in: query
-          description: Filter by namespace name
-          required: false
-          schema:
-            type: string
-        - name: parent_id
-          in: query
-          description: Filter by parent folder ID
-          required: false
-          schema:
-            type: string
-        - name: cursor
-          in: query
-          description: Pagination cursor
+          description: Filter by namespace name (uses primary namespace if not specified)
           required: false
           schema:
             type: string
@@ -1998,7 +1987,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedResponse-Folder'
+                $ref: '#/components/schemas/ApiResponse-FolderArray'
         '401':
           description: Unauthorized
           content:
@@ -2015,7 +2004,7 @@ paths:
       tags:
         - folders
       summary: Create a folder.
-      description: Create a new folder for organizing repositories.
+      description: Create a new folder at the specified path. Parent folders are created automatically if they don't exist.
       operationId: createFolder
       security:
         - bearerAuth: []
@@ -2072,7 +2061,8 @@ paths:
           description: Folder ID
           required: true
           schema:
-            type: string
+            type: integer
+            format: int64
       responses:
         '200':
           description: Folder details
@@ -2102,7 +2092,7 @@ paths:
       tags:
         - folders
       summary: Update a folder.
-      description: Update folder properties or move to a different parent.
+      description: Move or rename a folder by providing a new path. All descendant folders and repos are moved along with it.
       operationId: updateFolder
       security:
         - bearerAuth: []
@@ -2112,7 +2102,8 @@ paths:
           description: Folder ID
           required: true
           schema:
-            type: string
+            type: integer
+            format: int64
       requestBody:
         required: true
         content:
@@ -2148,7 +2139,7 @@ paths:
       tags:
         - folders
       summary: Delete a folder.
-      description: Delete a folder. Use force=true to delete even if not empty, recursive=true to delete children.
+      description: Delete a folder and all its descendants. Repositories in deleted folders are moved to the root.
       operationId: deleteFolder
       security:
         - bearerAuth: []
@@ -2158,66 +2149,11 @@ paths:
           description: Folder ID
           required: true
           schema:
-            type: string
-        - name: force
-          in: query
-          description: Force delete even if folder contains repos
-          required: false
-          schema:
-            type: boolean
-            default: false
-        - name: recursive
-          in: query
-          description: Recursively delete child folders
-          required: false
-          schema:
-            type: boolean
-            default: false
+            type: integer
+            format: int64
       responses:
         '204':
           description: Folder deleted successfully
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Folder not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/v1/folders/{id}/children:
-    get:
-      tags:
-        - folders
-      summary: List child folders.
-      description: Get all child folders of a specific folder.
-      operationId: listFolderChildren
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          description: Folder ID
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of child folders
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse-FolderArray'
         '401':
           description: Unauthorized
           content:
@@ -2242,7 +2178,7 @@ paths:
       tags:
         - folders
       summary: List repositories in a folder.
-      description: Get all repositories contained in a specific folder.
+      description: Get all repositories contained in a specific folder. Use recursive=true to include repos from all descendant folders.
       operationId: listFolderRepos
       security:
         - bearerAuth: []
@@ -2252,7 +2188,15 @@ paths:
           description: Folder ID
           required: true
           schema:
-            type: string
+            type: integer
+            format: int64
+        - name: recursive
+          in: query
+          description: Include repos from all descendant folders
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: List of repositories
@@ -4527,18 +4471,16 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int64
           description: Unique folder identifier
           examples:
-            - fld_01234567890abcdef
-        name:
+            - 1
+        path:
           type: string
-          description: Folder name
+          description: Full folder path (e.g., /engineering/backend)
           examples:
-            - projects
-        parent_id:
-          type: string
-          description: Parent folder ID (null for root folders)
+            - /engineering/backend
         namespace_id:
           type: string
           description: Owning namespace ID
@@ -4552,7 +4494,7 @@ components:
           description: Last update timestamp
       required:
         - id
-        - name
+        - path
         - namespace_id
         - created_at
         - updated_at
@@ -4560,36 +4502,31 @@ components:
     CreateFolderRequest:
       type: object
       properties:
-        name:
+        path:
           type: string
-          description: Folder name
+          description: Full folder path (e.g., /engineering/backend). Parent folders are created automatically.
           examples:
-            - projects
-        parent_id:
-          type: string
-          description: Parent folder ID (null for root folder)
+            - /engineering/backend
         namespace:
           type: string
           description: Namespace name (uses primary namespace if not specified)
       required:
-        - name
+        - path
 
     UpdateFolderRequest:
       type: object
       properties:
-        name:
+        path:
           type: string
-          description: New folder name
-        parent_id:
-          type: string
-          description: New parent folder ID
+          description: New folder path for move/rename operations
 
     SetRepoFolderRequest:
       type: object
       properties:
-        folder_id:
+        folder_path:
           type: string
-          description: Folder ID to add the repo to
+          nullable: true
+          description: Folder path to assign the repo to. Set to null or omit to move repo to root.
 
     # ============================================================================
     # API Response Wrappers
@@ -4832,25 +4769,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Tag'
-        next_cursor:
-          type: string
-          description: Cursor for the next page
-        has_more:
-          type: boolean
-          description: Whether more items exist
-        error:
-          type: 'null'
-      required:
-        - data
-        - has_more
-
-    PaginatedResponse-Folder:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/Folder'
         next_cursor:
           type: string
           description: Cursor for the next page

@@ -1,12 +1,11 @@
-# User Folders API Tests
+# User Folders API Tests (Materialized Path)
 
-# List folders - success
+# List folders - success (empty initially)
 GET {{base_url}}/api/v1/folders
 Authorization: Bearer {{user_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
-jsonpath "$.has_more" isBoolean
 
 # List folders with namespace filter
 GET {{base_url}}/api/v1/folders?namespace={{user_ns_name}}
@@ -20,81 +19,57 @@ POST {{base_url}}/api/v1/folders
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
 {
-    "name": "hurl-folder-{{test_suffix}}",
+    "path": "/hurl-folder-{{test_suffix}}",
     "namespace": "{{user_ns_name}}"
 }
 HTTP 201
 [Asserts]
-jsonpath "$.data.id" isString
-jsonpath "$.data.name" == "hurl-folder-{{test_suffix}}"
-jsonpath "$.data.parent_id" not exists
+jsonpath "$.data.id" isInteger
+jsonpath "$.data.path" == "/hurl-folder-{{test_suffix}}"
 [Captures]
 root_folder_id: jsonpath "$.data.id"
 
-# Create nested folder - success
+# Create nested folder - success (auto-creates parent if needed)
 POST {{base_url}}/api/v1/folders
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
 {
-    "name": "hurl-folder-child-{{test_suffix}}",
-    "namespace": "{{user_ns_name}}",
-    "parent_id": "{{root_folder_id}}"
+    "path": "/hurl-folder-{{test_suffix}}/child",
+    "namespace": "{{user_ns_name}}"
 }
 HTTP 201
 [Asserts]
-jsonpath "$.data.id" isString
-jsonpath "$.data.name" == "hurl-folder-child-{{test_suffix}}"
-jsonpath "$.data.parent_id" == {{root_folder_id}}
+jsonpath "$.data.id" isInteger
+jsonpath "$.data.path" == "/hurl-folder-{{test_suffix}}/child"
 [Captures]
 child_folder_id: jsonpath "$.data.id"
 
-# Create folder - conflict (duplicate name in same parent)
+# Create folder - conflict (duplicate path)
 POST {{base_url}}/api/v1/folders
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
 {
-    "name": "hurl-folder-child-{{test_suffix}}",
-    "namespace": "{{user_ns_name}}",
-    "parent_id": "{{root_folder_id}}"
+    "path": "/hurl-folder-{{test_suffix}}/child",
+    "namespace": "{{user_ns_name}}"
 }
 HTTP 409
 [Asserts]
 jsonpath "$.error" contains "already exists"
 
-# Create folder - with empty name (API allows this)
-POST {{base_url}}/api/v1/folders
-Authorization: Bearer {{user_token}}
-Content-Type: application/json
-{
-    "name": "",
-    "namespace": "{{user_ns_name}}"
-}
-HTTP 201
-[Captures]
-empty_name_folder_id: jsonpath "$.data.id"
-
-# Get specific folder - success (with full path)
+# Get specific folder - success
 GET {{base_url}}/api/v1/folders/{{child_folder_id}}
 Authorization: Bearer {{user_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.id" == {{child_folder_id}}
-jsonpath "$.data.name" == "hurl-folder-child-{{test_suffix}}"
-jsonpath "$.data.path" isString
+jsonpath "$.data.path" == "/hurl-folder-{{test_suffix}}/child"
 
 # Get folder - not found
-GET {{base_url}}/api/v1/folders/00000000-0000-0000-0000-000000000000
+GET {{base_url}}/api/v1/folders/99999999
 Authorization: Bearer {{user_token}}
 HTTP 404
 [Asserts]
 jsonpath "$.error" contains "not found"
-
-# List children of folder
-GET {{base_url}}/api/v1/folders/{{root_folder_id}}/children
-Authorization: Bearer {{user_token}}
-HTTP 200
-[Asserts]
-jsonpath "$.data" isCollection
 
 # List repos in folder (empty)
 GET {{base_url}}/api/v1/folders/{{root_folder_id}}/repos
@@ -103,47 +78,47 @@ HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 
-# Update folder - rename
+# Update folder - move/rename to new path
 PATCH {{base_url}}/api/v1/folders/{{child_folder_id}}
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
 {
-    "name": "hurl-folder-renamed-{{test_suffix}}"
+    "path": "/hurl-folder-{{test_suffix}}/renamed"
 }
 HTTP 200
 [Asserts]
-jsonpath "$.data.name" == "hurl-folder-renamed-{{test_suffix}}"
+jsonpath "$.data.path" == "/hurl-folder-{{test_suffix}}/renamed"
 
-# Create another root folder to test move
+# Create another root folder to test move across trees
 POST {{base_url}}/api/v1/folders
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
 {
-    "name": "hurl-folder-other-{{test_suffix}}",
+    "path": "/hurl-folder-other-{{test_suffix}}",
     "namespace": "{{user_ns_name}}"
 }
 HTTP 201
 [Captures]
 other_root_id: jsonpath "$.data.id"
 
-# Update folder - move to different parent
+# Move folder to different tree
 PATCH {{base_url}}/api/v1/folders/{{child_folder_id}}
 Authorization: Bearer {{user_token}}
 Content-Type: application/json
 {
-    "parent_id": "{{other_root_id}}"
+    "path": "/hurl-folder-other-{{test_suffix}}/moved"
 }
 HTTP 200
 [Asserts]
-jsonpath "$.data.parent_id" == {{other_root_id}}
+jsonpath "$.data.path" == "/hurl-folder-other-{{test_suffix}}/moved"
 
-# Delete folder - success
+# Delete folder - success (cascades, moves repos to root)
 DELETE {{base_url}}/api/v1/folders/{{child_folder_id}}
 Authorization: Bearer {{user_token}}
 HTTP 204
 
 # Delete folder - not found
-DELETE {{base_url}}/api/v1/folders/00000000-0000-0000-0000-000000000000
+DELETE {{base_url}}/api/v1/folders/99999999
 Authorization: Bearer {{user_token}}
 HTTP 404
 
@@ -153,11 +128,6 @@ Authorization: Bearer {{user_token}}
 HTTP 204
 
 DELETE {{base_url}}/api/v1/folders/{{root_folder_id}}
-Authorization: Bearer {{user_token}}
-HTTP 204
-
-# Clean up empty name folder
-DELETE {{base_url}}/api/v1/folders/{{empty_name_folder_id}}
 Authorization: Bearer {{user_token}}
 HTTP 204
 

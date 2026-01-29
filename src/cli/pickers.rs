@@ -618,7 +618,10 @@ fn load_user_repo_grants_with_names(
 
     for grant in grants {
         let (repo_name, namespace_name) = match store.get_repo_by_id(&grant.repo_id)? {
-            Some(repo) => (repo.name.clone(), resolve_namespace_name(store, &repo.namespace_id)),
+            Some(repo) => (
+                repo.name.clone(),
+                resolve_namespace_name(store, &repo.namespace_id),
+            ),
             None => ("<deleted>".to_string(), "<unknown>".to_string()),
         };
 

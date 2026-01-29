@@ -52,12 +52,11 @@ pub fn user_router() -> Router<Arc<AppState>> {
         .route("/tags/{id}", get(tags::get_tag))
         .route("/tags/{id}", patch(tags::update_tag))
         .route("/tags/{id}", delete(tags::delete_tag))
-        // Folders (hierarchical)
+        // Folders (materialized path)
         .route("/folders", get(folders::list_folders))
         .route("/folders", post(folders::create_folder))
         .route("/folders/{id}", get(folders::get_folder))
         .route("/folders/{id}", patch(folders::update_folder))
         .route("/folders/{id}", delete(folders::delete_folder))
-        .route("/folders/{id}/children", get(folders::list_folder_children))
         .route("/folders/{id}/repos", get(folders::list_folder_repos))
 }

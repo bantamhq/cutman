@@ -47,17 +47,17 @@ async fn create_user_and_token(
         .await
         .expect("parse user response");
 
-    let user_id = resp["data"]["id"]
-        .as_str()
-        .expect("user id")
-        .to_string();
+    let user_id = resp["data"]["id"].as_str().expect("user id").to_string();
     let user_ns_id = resp["data"]["primary_namespace_id"]
         .as_str()
         .expect("user namespace id")
         .to_string();
 
     let token_resp: Value = client
-        .post(format!("{}/api/v1/admin/users/{}/tokens", base_url, user_id))
+        .post(format!(
+            "{}/api/v1/admin/users/{}/tokens",
+            base_url, user_id
+        ))
         .bearer_auth(admin_token)
         .json(&serde_json::json!({"description": "CLI test token"}))
         .send()
@@ -100,10 +100,7 @@ async fn create_repo(
         .await
         .expect("parse repo response");
 
-    resp["data"]["id"]
-        .as_str()
-        .expect("repo id")
-        .to_string()
+    resp["data"]["id"].as_str().expect("repo id").to_string()
 }
 
 async fn create_tag(
@@ -127,10 +124,7 @@ async fn create_tag(
         .await
         .expect("parse tag response");
 
-    resp["data"]["id"]
-        .as_str()
-        .expect("tag id")
-        .to_string()
+    resp["data"]["id"].as_str().expect("tag id").to_string()
 }
 
 async fn list_repo_tag_ids(
@@ -162,7 +156,13 @@ fn auth_login_requires_server_in_non_interactive_mode() {
     let config_dir = TempDir::new().expect("failed to create temp dir");
 
     cli_cmd(&config_dir)
-        .args(["auth", "login", "--token", "cutman_test", "--non-interactive"])
+        .args([
+            "auth",
+            "login",
+            "--token",
+            "cutman_test",
+            "--non-interactive",
+        ])
         .assert()
         .failure()
         .stderr(predicate::str::contains("--server is required"));
@@ -173,7 +173,13 @@ fn auth_login_requires_token_in_non_interactive_mode() {
     let config_dir = TempDir::new().expect("failed to create temp dir");
 
     cli_cmd(&config_dir)
-        .args(["auth", "login", "--server", "http://localhost", "--non-interactive"])
+        .args([
+            "auth",
+            "login",
+            "--server",
+            "http://localhost",
+            "--non-interactive",
+        ])
         .assert()
         .failure()
         .stderr(predicate::str::contains("--token is required"));
@@ -203,13 +209,8 @@ async fn auth_login_and_credential_helper_roundtrip() {
     let server = TestServer::start().await;
     let client = Client::new();
 
-    let user = create_user_and_token(
-        &client,
-        &server.base_url,
-        &server.admin_token,
-        "cli-user",
-    )
-    .await;
+    let user =
+        create_user_and_token(&client, &server.base_url, &server.admin_token, "cli-user").await;
 
     let config_dir = TempDir::new().expect("failed to create temp dir");
 
@@ -314,9 +315,14 @@ async fn repo_tag_and_delete_flow() {
         .success();
 
     let repo_name = "cli-repo";
-    let repo_id =
-        create_repo(&client, &server.base_url, &user.user_token, repo_name, &user.user_ns_name)
-            .await;
+    let repo_id = create_repo(
+        &client,
+        &server.base_url,
+        &user.user_token,
+        repo_name,
+        &user.user_ns_name,
+    )
+    .await;
     let repo_ref = format!("{}/{}", user.user_ns_name, repo_name);
 
     cli_cmd(&config_dir)
@@ -355,8 +361,8 @@ async fn repo_tag_and_delete_flow() {
         .assert()
         .success();
 
-    let mut tag_ids = list_repo_tag_ids(&client, &server.base_url, &user.user_token, &repo_id)
-        .await;
+    let mut tag_ids =
+        list_repo_tag_ids(&client, &server.base_url, &user.user_token, &repo_id).await;
     tag_ids.sort();
     let mut expected = vec![tag_a.clone(), tag_b.clone()];
     expected.sort();
@@ -369,13 +375,7 @@ async fn repo_tag_and_delete_flow() {
         .stderr(predicate::str::contains("Repository argument is required"));
 
     cli_cmd(&config_dir)
-        .args([
-            "repo",
-            "delete",
-            "--non-interactive",
-            "--yes",
-            &repo_ref,
-        ])
+        .args(["repo", "delete", "--non-interactive", "--yes", &repo_ref])
         .assert()
         .success();
 
@@ -512,21 +512,22 @@ async fn repo_clone_clones_bare_repo() {
         .success();
 
     let repo_name = "cli-clone-repo";
-    let _repo_id =
-        create_repo(&client, &server.base_url, &user.user_token, repo_name, &user.user_ns_name)
-            .await;
+    let _repo_id = create_repo(
+        &client,
+        &server.base_url,
+        &user.user_token,
+        repo_name,
+        &user.user_ns_name,
+    )
+    .await;
 
     let bare_repo_path = server
         .data_dir()
         .join("repos")
         .join(&user.user_ns_id)
         .join(format!("{repo_name}.git"));
-    std::fs::create_dir_all(
-        bare_repo_path
-            .parent()
-            .expect("bare repo parent"),
-    )
-    .expect("create bare repo parent");
+    std::fs::create_dir_all(bare_repo_path.parent().expect("bare repo parent"))
+        .expect("create bare repo parent");
 
     let init_status = ProcessCommand::new("git")
         .args(["init", "--bare"])
@@ -534,8 +535,7 @@ async fn repo_clone_clones_bare_repo() {
         .status()
         .expect("init bare repo");
     assert!(init_status.success());
-    std::fs::write(bare_repo_path.join("HEAD"), "ref: refs/heads/main\n")
-        .expect("write HEAD");
+    std::fs::write(bare_repo_path.join("HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
 
     let work_dir = TempDir::new().expect("failed to create temp dir");
     let repo_ref = format!("{}/{}", user.user_ns_name, repo_name);

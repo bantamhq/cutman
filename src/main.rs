@@ -10,15 +10,16 @@ use uuid::Uuid;
 
 use cutman::auth::TokenGenerator;
 use cutman::cli::{
-    AdminCommands, AuthCommands, CredentialCommands, NamespaceCommands, PermissionCommands,
-    RepoCommands, TagCommands, TokenCommands, UserCommands, print_credential_help, run_auth_login,
-    run_auth_logout, run_credential_erase, run_credential_get, run_credential_store, run_info,
-    run_namespace_add, run_namespace_remove, run_new, run_permission_grant,
-    run_permission_repo_grant, run_permission_repo_revoke, run_permission_revoke, run_repo_clone,
-    run_repo_delete, run_repo_tag, run_tag_create, run_tag_delete, run_token_create,
-    run_token_revoke, run_user_add, run_user_remove,
+    AdminCommands, AuthCommands, CredentialCommands, FolderCommands, NamespaceCommands,
+    PermissionCommands, RepoCommands, TagCommands, TokenCommands, UserCommands,
+    print_credential_help, run_auth_login, run_auth_logout, run_credential_erase,
+    run_credential_get, run_credential_store, run_folder_create, run_folder_delete,
+    run_folder_list, run_folder_move, run_info, run_namespace_add, run_namespace_remove, run_new,
+    run_permission_grant, run_permission_repo_grant, run_permission_repo_revoke,
+    run_permission_revoke, run_repo_clone, run_repo_delete, run_repo_move, run_repo_tag,
+    run_tag_create, run_tag_delete, run_token_create, run_token_revoke, run_user_add,
+    run_user_remove,
 };
-use cutman::tui::run_manage;
 use cutman::config::{ServerConfig, ServerConfigOverrides};
 use cutman::server::{AppState, create_router};
 use cutman::store::{SqliteStore, Store};
@@ -125,11 +126,10 @@ enum Commands {
         command: Option<CredentialCommands>,
     },
 
-    /// Launch interactive folder/repo management TUI
-    Manage {
-        /// Workspace to manage (defaults to primary namespace)
-        #[arg(long, short)]
-        workspace: Option<String>,
+    /// Folder management
+    Folder {
+        #[command(subcommand)]
+        command: FolderCommands,
     },
 }
 
@@ -413,6 +413,13 @@ fn main() -> anyhow::Result<()> {
             } => {
                 run_repo_tag(repo, tags, non_interactive)?;
             }
+            RepoCommands::Move {
+                repo,
+                folder,
+                non_interactive,
+            } => {
+                run_repo_move(repo, folder, non_interactive)?;
+            }
         },
         Commands::Tag { command } => match command {
             TagCommands::Create {
@@ -447,9 +454,37 @@ fn main() -> anyhow::Result<()> {
                 print_credential_help();
             }
         },
-        Commands::Manage { workspace } => {
-            run_manage(workspace)?;
-        }
+        Commands::Folder { command } => match command {
+            FolderCommands::Create {
+                path,
+                namespace,
+                non_interactive,
+            } => {
+                run_folder_create(path, namespace, non_interactive)?;
+            }
+            FolderCommands::List {
+                namespace,
+                non_interactive,
+            } => {
+                run_folder_list(namespace, non_interactive)?;
+            }
+            FolderCommands::Delete {
+                path,
+                namespace,
+                non_interactive,
+                yes,
+            } => {
+                run_folder_delete(path, namespace, non_interactive, yes)?;
+            }
+            FolderCommands::Move {
+                old_path,
+                new_path,
+                namespace,
+                non_interactive,
+            } => {
+                run_folder_move(old_path, new_path, namespace, non_interactive)?;
+            }
+        },
     }
 
     Ok(())

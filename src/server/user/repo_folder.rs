@@ -11,6 +11,7 @@ use crate::auth::RequireUser;
 use crate::server::AppState;
 use crate::server::dto::SetRepoFolderRequest;
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
+use crate::store::path::normalize_path;
 use crate::types::{Folder, Permission};
 
 use super::access::require_repo_permission;
@@ -35,7 +36,7 @@ pub async fn list_repo_folders(
 
     require_repo_permission(store, user, &repo, Permission::REPO_READ)?;
 
-    let folder = match &repo.folder_id {
+    let folder = match repo.folder_id {
         Some(folder_id) => store
             .get_folder_by_id(folder_id)
             .api_err("Failed to get folder")?,
@@ -45,7 +46,7 @@ pub async fn list_repo_folders(
     Ok::<_, ApiError>(Json(ApiResponse::success(folder_to_vec(folder))))
 }
 
-/// POST /repos/{id}/folders - Set the folder for a repo
+/// POST /repos/{id}/folders - Set the folder for a repo by path
 pub async fn set_repo_folder(
     auth: RequireUser,
     State(state): State<Arc<AppState>>,
@@ -62,27 +63,17 @@ pub async fn set_repo_folder(
 
     require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
 
-    if let Some(ref folder_id) = req.folder_id {
-        let folder = store
-            .get_folder_by_id(folder_id)
-            .api_err("Failed to get folder")?
-            .or_not_found("Folder not found")?;
+    let normalized_path = match &req.folder_path {
+        Some(path) => Some(normalize_path(path).map_err(|e| ApiError::bad_request(e.to_string()))?),
+        None => None,
+    };
 
-        if folder.namespace_id != repo.namespace_id {
-            return Err(ApiError::bad_request(
-                "Folder must belong to the same namespace as the repository",
-            ));
-        }
-    }
-
-    store
-        .set_repo_folder(&repo.id, req.folder_id.as_deref())
+    let folder_id = store
+        .set_repo_folder_by_path(&repo.id, &repo.namespace_id, normalized_path.as_deref())
         .api_err("Failed to set repo folder")?;
 
-    let folder = match &req.folder_id {
-        Some(folder_id) => store
-            .get_folder_by_id(folder_id)
-            .api_err("Failed to get folder")?,
+    let folder = match folder_id {
+        Some(id) => store.get_folder_by_id(id).api_err("Failed to get folder")?,
         None => None,
     };
 
@@ -92,7 +83,7 @@ pub async fn set_repo_folder(
 #[derive(serde::Deserialize)]
 pub struct RepoFolderPath {
     id: String,
-    folder_id: String,
+    folder_id: i64,
 }
 
 /// DELETE /repos/{id}/folders/{folder_id} - Clear folder if it matches
@@ -111,8 +102,8 @@ pub async fn clear_repo_folder(
 
     require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
 
-    match &repo.folder_id {
-        Some(current_folder_id) if current_folder_id == &path.folder_id => {
+    match repo.folder_id {
+        Some(current_folder_id) if current_folder_id == path.folder_id => {
             store
                 .set_repo_folder(&repo.id, None)
                 .api_err("Failed to clear repo folder")?;

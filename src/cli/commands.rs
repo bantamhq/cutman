@@ -323,6 +323,20 @@ pub enum RepoCommands {
         #[arg(long)]
         non_interactive: bool,
     },
+
+    /// Move a repository to a folder
+    Move {
+        /// Repository (format: namespace/repo or just repo for primary namespace)
+        repo: Option<String>,
+
+        /// Folder path (use empty string "" to move to root)
+        #[arg(long)]
+        folder: String,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -377,5 +391,68 @@ pub enum TagCommands {
         /// Force delete even if tag has repos
         #[arg(long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum FolderCommands {
+    /// Create a new folder
+    Create {
+        /// Folder path (e.g., /engineering/backend)
+        path: Option<String>,
+
+        /// Namespace (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+    },
+
+    /// List all folders
+    List {
+        /// Namespace (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+    },
+
+    /// Delete a folder (cascades to subfolders, moves repos to root)
+    Delete {
+        /// Folder path to delete
+        path: Option<String>,
+
+        /// Namespace (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Skip confirmation
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+
+    /// Move/rename a folder
+    Move {
+        /// Current folder path
+        old_path: Option<String>,
+
+        /// New folder path
+        new_path: Option<String>,
+
+        /// Namespace (default: primary)
+        #[arg(short, long)]
+        namespace: Option<String>,
+
+        /// Skip interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
     },
 }

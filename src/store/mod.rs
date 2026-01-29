@@ -1,3 +1,4 @@
+pub mod path;
 mod schema;
 mod sqlite;
 
@@ -61,33 +62,28 @@ pub trait Store: Send + Sync {
     fn list_tag_repos(&self, tag_id: &str) -> Result<Vec<Repo>>;
     fn set_repo_tags(&self, repo_id: &str, tag_ids: &[String]) -> Result<()>;
 
-    // Folder operations (hierarchical, one-to-many with repos)
-    fn create_folder(&self, folder: &Folder) -> Result<()>;
-    fn get_folder_by_id(&self, id: &str) -> Result<Option<Folder>>;
-    fn get_folder_by_name(
-        &self,
-        namespace_id: &str,
-        parent_id: Option<&str>,
-        name: &str,
-    ) -> Result<Option<Folder>>;
-    fn list_folders(
-        &self,
-        namespace_id: &str,
-        parent_id: Option<&str>,
-        cursor: &str,
-        limit: i32,
-    ) -> Result<Vec<Folder>>;
-    fn list_folder_children(&self, folder_id: &str) -> Result<Vec<Folder>>;
-    fn list_folder_ancestors(&self, folder_id: &str) -> Result<Vec<Folder>>;
-    fn update_folder(&self, folder: &Folder) -> Result<()>;
-    fn move_folder(&self, folder_id: &str, new_parent_id: Option<&str>) -> Result<()>;
-    fn delete_folder(&self, id: &str, recursive: bool) -> Result<bool>;
-    fn get_folder_path(&self, folder_id: &str) -> Result<String>;
-    fn count_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<i32>;
+    // Folder operations (materialized path, one-to-many with repos)
+    fn get_folder_by_id(&self, id: i64) -> Result<Option<Folder>>;
+    fn get_folder_by_path(&self, namespace_id: &str, path: &str) -> Result<Option<Folder>>;
+    fn ensure_folder_path(&self, namespace_id: &str, path: &str) -> Result<i64>;
+    fn list_all_folders(&self, namespace_id: &str) -> Result<Vec<Folder>>;
+    fn move_folder(&self, id: i64, new_path: &str) -> Result<()>;
+    fn delete_folder(&self, id: i64) -> Result<bool>;
 
     // Repo-Folder operations (one-to-many)
-    fn set_repo_folder(&self, repo_id: &str, folder_id: Option<&str>) -> Result<()>;
-    fn list_folder_repos(&self, folder_id: &str, recursive: bool) -> Result<Vec<Repo>>;
+    fn set_repo_folder(&self, repo_id: &str, folder_id: Option<i64>) -> Result<()>;
+    fn set_repo_folder_by_path(
+        &self,
+        repo_id: &str,
+        namespace_id: &str,
+        path: Option<&str>,
+    ) -> Result<Option<i64>>;
+    fn list_folder_repos(
+        &self,
+        namespace_id: &str,
+        path: &str,
+        recursive: bool,
+    ) -> Result<Vec<Repo>>;
 
     // Namespace grant operations
     fn upsert_namespace_grant(&self, grant: &NamespaceGrant) -> Result<()>;
