@@ -243,6 +243,7 @@ async fn api_hurl_tests() {
         "content/commits.hurl",
         "content/tree.hurl",
         "content/blob.hurl",
+        "content/mutations.hurl",
         "content/compare.hurl",
         "content/blame.hurl",
         "content/archive.hurl",

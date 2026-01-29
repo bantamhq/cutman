@@ -30,6 +30,10 @@ pub fn content_router() -> Router<Arc<AppState>> {
         )
         .route("/repos/{id}/commits", get(handlers::list_commits))
         .route(
+            "/repos/{id}/commits",
+            post(handlers::create_multi_commit),
+        )
+        .route(
             "/repos/{id}/commits/{sha}",
             get(handlers::get_commit_handler),
         )
@@ -43,8 +47,18 @@ pub fn content_router() -> Router<Arc<AppState>> {
             "/repos/{id}/tree/{ref}/{*path}",
             get(handlers::get_tree_handler),
         )
-        .route("/repos/{id}/blob/{ref}/{*path}", get(handlers::get_blob))
+        .route(
+            "/repos/{id}/blob/{ref}/{*path}",
+            get(handlers::get_blob_enhanced)
+                .put(handlers::put_blob)
+                .delete(handlers::delete_blob),
+        )
+        .route(
+            "/repos/{id}/upload/{ref}/{*path}",
+            post(handlers::upload_blob),
+        )
         .route("/repos/{id}/blame/{ref}/{*path}", get(handlers::get_blame))
         .route("/repos/{id}/archive/{ref}", get(handlers::get_archive))
         .route("/repos/{id}/readme", get(handlers::get_readme))
+        .route("/repos/{id}/search", get(handlers::search_paths_handler))
 }

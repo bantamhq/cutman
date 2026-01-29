@@ -15,6 +15,7 @@ pub enum GitError {
     EmptyRepo,
     NotAFile,
     NotADirectory,
+    Conflict(String),
     Internal(String),
 }
 
@@ -27,6 +28,7 @@ impl From<GitError> for ApiError {
             GitError::EmptyRepo => ApiError::not_found("Repository is empty"),
             GitError::NotAFile => ApiError::bad_request("Path is a directory, not a file"),
             GitError::NotADirectory => ApiError::bad_request("Path is a file, not a directory"),
+            GitError::Conflict(msg) => ApiError::conflict(msg),
             GitError::Internal(msg) => ApiError::internal(msg),
         }
     }
@@ -395,4 +397,397 @@ pub fn set_default_branch(repo: &Repository, branch: &str) -> Result<(), GitErro
         .map_err(|e| GitError::Internal(format!("Failed to set HEAD: {e}")))?;
 
     Ok(())
+}
+
+/// Verify that the blob at the given path has the expected SHA.
+/// Returns Ok(()) if they match, Conflict error if not.
+pub fn verify_blob_sha(tree: &Tree<'_>, path: &str, expected_sha: &str) -> Result<(), GitError> {
+    let entry = tree
+        .get_path(Path::new(path))
+        .map_err(|_| GitError::PathNotFound(path.to_string()))?;
+
+    let expected_oid = Oid::from_str(expected_sha)
+        .map_err(|_| GitError::Internal(format!("Invalid SHA: {expected_sha}")))?;
+
+    if entry.id() != expected_oid {
+        return Err(GitError::Conflict(format!(
+            "File has been modified. Expected {expected_sha}, found {}",
+            entry.id()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Check if a file exists at the given path in the tree.
+#[must_use]
+pub fn file_exists(tree: &Tree<'_>, path: &str) -> bool {
+    tree.get_path(Path::new(path)).is_ok()
+}
+
+/// Build a new tree with a blob added or updated at the given path.
+/// Handles nested paths by creating intermediate tree entries as needed.
+pub fn tree_with_blob(
+    repo: &Repository,
+    base_tree: Option<&Tree<'_>>,
+    path: &str,
+    content: &[u8],
+) -> Result<Oid, GitError> {
+    let blob_oid = repo
+        .blob(content)
+        .map_err(|e| GitError::Internal(format!("Failed to create blob: {e}")))?;
+
+    let parts: Vec<&str> = path.split('/').collect();
+    build_tree_recursive(repo, base_tree, &parts, blob_oid, 0o100644)
+}
+
+fn build_tree_recursive(
+    repo: &Repository,
+    base_tree: Option<&Tree<'_>>,
+    parts: &[&str],
+    blob_oid: Oid,
+    filemode: i32,
+) -> Result<Oid, GitError> {
+    let mut builder = repo
+        .treebuilder(base_tree)
+        .map_err(|e| GitError::Internal(format!("Failed to create tree builder: {e}")))?;
+
+    if parts.len() == 1 {
+        builder
+            .insert(parts[0], blob_oid, filemode)
+            .map_err(|e| GitError::Internal(format!("Failed to insert blob: {e}")))?;
+    } else {
+        let subdir = parts[0];
+        let rest = &parts[1..];
+
+        let existing_subtree = base_tree.and_then(|t| {
+            t.get_name(subdir).and_then(|entry| {
+                if entry.kind() == Some(ObjectType::Tree) {
+                    repo.find_tree(entry.id()).ok()
+                } else {
+                    None
+                }
+            })
+        });
+
+        let new_subtree_oid =
+            build_tree_recursive(repo, existing_subtree.as_ref(), rest, blob_oid, filemode)?;
+
+        builder
+            .insert(subdir, new_subtree_oid, 0o040000)
+            .map_err(|e| GitError::Internal(format!("Failed to insert subtree: {e}")))?;
+    }
+
+    builder
+        .write()
+        .map_err(|e| GitError::Internal(format!("Failed to write tree: {e}")))
+}
+
+/// Build a new tree with a file removed at the given path.
+/// Cleans up empty parent directories.
+pub fn tree_without_entry(
+    repo: &Repository,
+    base_tree: &Tree<'_>,
+    path: &str,
+) -> Result<Oid, GitError> {
+    let parts: Vec<&str> = path.split('/').collect();
+    remove_from_tree_recursive(repo, base_tree, &parts)
+}
+
+fn remove_from_tree_recursive(
+    repo: &Repository,
+    tree: &Tree<'_>,
+    parts: &[&str],
+) -> Result<Oid, GitError> {
+    let mut builder = repo
+        .treebuilder(Some(tree))
+        .map_err(|e| GitError::Internal(format!("Failed to create tree builder: {e}")))?;
+
+    if parts.len() == 1 {
+        builder
+            .remove(parts[0])
+            .map_err(|e| GitError::Internal(format!("Failed to remove entry: {e}")))?;
+    } else {
+        let subdir = parts[0];
+        let rest = &parts[1..];
+
+        let entry = tree
+            .get_name(subdir)
+            .ok_or_else(|| GitError::PathNotFound(parts.join("/")))?;
+
+        if entry.kind() != Some(ObjectType::Tree) {
+            return Err(GitError::NotADirectory);
+        }
+
+        let subtree = repo
+            .find_tree(entry.id())
+            .map_err(|e| GitError::Internal(format!("Failed to find subtree: {e}")))?;
+
+        let new_subtree_oid = remove_from_tree_recursive(repo, &subtree, rest)?;
+
+        let new_subtree = repo
+            .find_tree(new_subtree_oid)
+            .map_err(|e| GitError::Internal(format!("Failed to find new subtree: {e}")))?;
+
+        if new_subtree.is_empty() {
+            builder
+                .remove(subdir)
+                .map_err(|e| GitError::Internal(format!("Failed to remove empty dir: {e}")))?;
+        } else {
+            builder
+                .insert(subdir, new_subtree_oid, 0o040000)
+                .map_err(|e| GitError::Internal(format!("Failed to insert updated subtree: {e}")))?;
+        }
+    }
+
+    builder
+        .write()
+        .map_err(|e| GitError::Internal(format!("Failed to write tree: {e}")))
+}
+
+/// Create a commit on a branch with the given tree and message.
+/// Returns (commit_sha, branch_name).
+pub fn create_commit_on_branch(
+    repo: &Repository,
+    branch: &str,
+    tree_oid: Oid,
+    message: &str,
+    author_name: &str,
+    author_email: &str,
+) -> Result<Oid, GitError> {
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| GitError::Internal(format!("Failed to find tree: {e}")))?;
+
+    let sig = Signature::now(author_name, author_email)
+        .map_err(|e| GitError::Internal(format!("Failed to create signature: {e}")))?;
+
+    let branch_ref = format!("refs/heads/{branch}");
+
+    let parent_commit = repo
+        .find_reference(&branch_ref)
+        .ok()
+        .and_then(|r| r.target())
+        .and_then(|oid| repo.find_commit(oid).ok());
+
+    let parents: Vec<&Commit<'_>> = parent_commit.iter().collect();
+
+    let commit_oid = repo
+        .commit(Some(&branch_ref), &sig, &sig, message, &tree, &parents)
+        .map_err(|e| GitError::Internal(format!("Failed to create commit: {e}")))?;
+
+    Ok(commit_oid)
+}
+
+/// Action to apply in a multi-file commit
+#[derive(Debug)]
+pub enum CommitActionOp {
+    Create { path: String, content: Vec<u8> },
+    Update { path: String, content: Vec<u8>, sha: Option<String> },
+    Delete { path: String, sha: String },
+    Move { from: String, to: String, sha: Option<String> },
+}
+
+/// Apply multiple actions to create a new tree, then commit.
+pub fn apply_actions(
+    repo: &Repository,
+    branch: &str,
+    actions: &[CommitActionOp],
+    message: &str,
+    author_name: &str,
+    author_email: &str,
+) -> Result<Oid, GitError> {
+    let branch_ref = format!("refs/heads/{branch}");
+
+    let base_tree = repo
+        .find_reference(&branch_ref)
+        .ok()
+        .and_then(|r| r.target())
+        .and_then(|oid| repo.find_commit(oid).ok())
+        .and_then(|c| c.tree().ok());
+
+    let mut current_tree_oid = base_tree.as_ref().map(|t| t.id());
+
+    for action in actions {
+        current_tree_oid = Some(apply_single_action(
+            repo,
+            current_tree_oid.and_then(|oid| repo.find_tree(oid).ok()).as_ref(),
+            action,
+        )?);
+    }
+
+    let final_tree_oid = current_tree_oid.ok_or_else(|| {
+        GitError::Internal("No tree after applying actions".to_string())
+    })?;
+
+    create_commit_on_branch(repo, branch, final_tree_oid, message, author_name, author_email)
+}
+
+fn apply_single_action(
+    repo: &Repository,
+    base_tree: Option<&Tree<'_>>,
+    action: &CommitActionOp,
+) -> Result<Oid, GitError> {
+    match action {
+        CommitActionOp::Create { path, content } => {
+            if let Some(tree) = base_tree {
+                if file_exists(tree, path) {
+                    return Err(GitError::Conflict(format!(
+                        "File already exists: {path}. Provide 'sha' to update."
+                    )));
+                }
+            }
+            tree_with_blob(repo, base_tree, path, content)
+        }
+        CommitActionOp::Update { path, content, sha } => {
+            if let Some(expected_sha) = sha {
+                if let Some(tree) = base_tree {
+                    verify_blob_sha(tree, path, expected_sha)?;
+                }
+            }
+            tree_with_blob(repo, base_tree, path, content)
+        }
+        CommitActionOp::Delete { path, sha } => {
+            let tree = base_tree.ok_or_else(|| GitError::PathNotFound(path.clone()))?;
+            verify_blob_sha(tree, path, sha)?;
+            tree_without_entry(repo, tree, path)
+        }
+        CommitActionOp::Move { from, to, sha } => {
+            let tree = base_tree.ok_or_else(|| GitError::PathNotFound(from.clone()))?;
+
+            if let Some(expected_sha) = sha {
+                verify_blob_sha(tree, from, expected_sha)?;
+            }
+
+            let blob = get_blob_at_path(repo, tree, from)?;
+            let content = blob.content().to_vec();
+
+            let intermediate_tree_oid = tree_without_entry(repo, tree, from)?;
+            let intermediate_tree = repo
+                .find_tree(intermediate_tree_oid)
+                .map_err(|e| GitError::Internal(format!("Failed to find intermediate tree: {e}")))?;
+
+            tree_with_blob(repo, Some(&intermediate_tree), to, &content)
+        }
+    }
+}
+
+/// Search for paths matching a glob pattern in the tree.
+pub fn search_paths(
+    repo: &Repository,
+    tree: &Tree<'_>,
+    pattern: &str,
+    limit: usize,
+) -> Result<Vec<String>, GitError> {
+    let glob_pattern = glob::Pattern::new(pattern)
+        .map_err(|e| GitError::Internal(format!("Invalid glob pattern: {e}")))?;
+
+    let mut matches = Vec::new();
+    collect_matching_paths(repo, tree, "", &glob_pattern, &mut matches, limit);
+    Ok(matches)
+}
+
+fn collect_matching_paths(
+    repo: &Repository,
+    tree: &Tree<'_>,
+    prefix: &str,
+    pattern: &glob::Pattern,
+    matches: &mut Vec<String>,
+    limit: usize,
+) {
+    if matches.len() >= limit {
+        return;
+    }
+
+    for entry in tree.iter() {
+        if matches.len() >= limit {
+            break;
+        }
+
+        let name = entry.name().unwrap_or("");
+        let path = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}/{name}")
+        };
+
+        if pattern.matches(&path) {
+            matches.push(path.clone());
+        }
+
+        if let Some(ObjectType::Tree) = entry.kind() {
+            if let Ok(subtree) = repo.find_tree(entry.id()) {
+                collect_matching_paths(repo, &subtree, &path, pattern, matches, limit);
+            }
+        }
+    }
+}
+
+/// Get file history by walking commits that touch the given path.
+pub fn get_file_history(
+    repo: &Repository,
+    start_oid: Oid,
+    path: &str,
+    limit: usize,
+    cursor: Option<&str>,
+) -> Result<(Vec<CommitResponse>, Option<String>, bool), GitError> {
+    let mut revwalk = repo
+        .revwalk()
+        .map_err(|e| GitError::Internal(format!("Failed to create revwalk: {e}")))?;
+
+    let start_commit = if let Some(cursor_sha) = cursor {
+        Oid::from_str(cursor_sha)
+            .map_err(|_| GitError::Internal(format!("Invalid cursor: {cursor_sha}")))?
+    } else {
+        start_oid
+    };
+
+    revwalk
+        .push(start_commit)
+        .map_err(|e| GitError::Internal(format!("Failed to start revwalk: {e}")))?;
+
+    if cursor.is_some() {
+        revwalk.next();
+    }
+
+    let path_obj = Path::new(path);
+    let mut commits = Vec::new();
+
+    for oid_result in revwalk {
+        if commits.len() > limit {
+            break;
+        }
+
+        let commit_oid = oid_result
+            .map_err(|e| GitError::Internal(format!("Revwalk error: {e}")))?;
+
+        let commit = get_commit(repo, commit_oid)?;
+
+        let tree = commit.tree().ok();
+        let current_entry = tree.as_ref().and_then(|t| t.get_path(path_obj).ok());
+
+        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+        let parent_entry = parent_tree.as_ref().and_then(|t| t.get_path(path_obj).ok());
+
+        let touches_path = match (&current_entry, &parent_entry) {
+            (Some(curr), Some(par)) => curr.id() != par.id(),
+            (Some(_), None) | (None, Some(_)) => true,
+            (None, None) => false,
+        };
+
+        if touches_path {
+            let stats = compute_commit_stats(repo, &commit);
+            commits.push(commit_to_response(&commit, stats));
+        }
+    }
+
+    let has_more = commits.len() > limit;
+    let next_cursor = if has_more {
+        commits.pop();
+        commits.last().map(|c| c.sha.clone())
+    } else {
+        None
+    };
+
+    Ok((commits, next_cursor, has_more))
 }
