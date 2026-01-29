@@ -1,0 +1,5709 @@
+openapi: 3.1.0
+info:
+  title: Cutman API
+  description: |-
+    Cutman is a Git repository hosting and management API. It provides endpoints for:
+    - Repository management (create, read, update, delete)
+    - Git operations (refs, commits, blobs, trees)
+    - Namespace and user administration
+    - Git LFS support
+    - Tag and folder organization
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+tags:
+  - name: health
+    description: Health check endpoints
+  - name: admin-namespaces
+    description: Admin namespace management
+  - name: admin-tokens
+    description: Admin token management
+  - name: admin-users
+    description: Admin user management
+  - name: admin-grants
+    description: Admin namespace and repo grant management
+  - name: namespaces
+    description: User namespace operations
+  - name: repos
+    description: Repository management
+  - name: tags
+    description: Tag management for organizing repositories
+  - name: folders
+    description: Folder management for organizing repositories
+  - name: refs
+    description: Git reference (branch/tag) operations
+  - name: commits
+    description: Git commit operations
+  - name: content
+    description: File and tree content operations
+  - name: git-protocol
+    description: Git smart protocol endpoints
+  - name: git-lfs
+    description: Git LFS endpoints
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check.
+      description: Returns OK if the server is healthy.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                examples:
+                  - OK
+
+  # ============================================================================
+  # ADMIN API - Namespaces
+  # ============================================================================
+  /api/v1/admin/namespaces:
+    post:
+      tags:
+        - admin-namespaces
+      summary: Create a namespace.
+      description: Create a new namespace for organizing repositories.
+      operationId: adminCreateNamespace
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNamespaceRequest'
+      responses:
+        '201':
+          description: Namespace created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Namespace'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Namespace already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - admin-namespaces
+      summary: List all namespaces.
+      description: List all namespaces with pagination support.
+      operationId: adminListNamespaces
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          description: Pagination cursor for fetching the next page
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of namespaces
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-Namespace'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/namespaces/{name}:
+    get:
+      tags:
+        - admin-namespaces
+      summary: Get a namespace by name.
+      description: Retrieve details of a specific namespace.
+      operationId: adminGetNamespace
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: path
+          description: Name of the namespace
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Namespace details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Namespace'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Namespace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - admin-namespaces
+      summary: Delete a namespace.
+      description: Delete a namespace. The namespace must be empty (no repositories).
+      operationId: adminDeleteNamespace
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: path
+          description: Name of the namespace
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Namespace deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Namespace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Namespace not empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # ADMIN API - Tokens
+  # ============================================================================
+  /api/v1/admin/tokens:
+    get:
+      tags:
+        - admin-tokens
+      summary: List all tokens.
+      description: List all tokens with pagination support.
+      operationId: adminListTokens
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          description: Pagination cursor for fetching the next page
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-TokenResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/tokens/{id}:
+    get:
+      tags:
+        - admin-tokens
+      summary: Get a token by ID.
+      description: Retrieve details of a specific token.
+      operationId: adminGetToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Token ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TokenResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - admin-tokens
+      summary: Delete a token.
+      description: Revoke and delete a token.
+      operationId: adminDeleteToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Token ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Token deleted successfully
+        '400':
+          description: Invalid token ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # ADMIN API - Users
+  # ============================================================================
+  /api/v1/admin/users:
+    post:
+      tags:
+        - admin-users
+      summary: Create a user.
+      description: Create a new user with an associated namespace.
+      operationId: adminCreateUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - admin-users
+      summary: List all users.
+      description: List all users with pagination support.
+      operationId: adminListUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          description: Pagination cursor for fetching the next page
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/users/{id}:
+    get:
+      tags:
+        - admin-users
+      summary: Get a user by ID.
+      description: Retrieve details of a specific user.
+      operationId: adminGetUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - admin-users
+      summary: Delete a user.
+      description: Delete a user and revoke all associated tokens.
+      operationId: adminDeleteUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: User deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/users/{id}/tokens:
+    get:
+      tags:
+        - admin-users
+      summary: List tokens for a user.
+      description: List all tokens associated with a specific user.
+      operationId: adminListUserTokens
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TokenResponseArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - admin-users
+      summary: Create a token for a user.
+      description: Create a new authentication token for a specific user.
+      operationId: adminCreateUserToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserTokenRequest'
+      responses:
+        '201':
+          description: Token created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-CreateTokenResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # ADMIN API - Namespace Grants
+  # ============================================================================
+  /api/v1/admin/users/{id}/namespace-grants:
+    post:
+      tags:
+        - admin-grants
+      summary: Create namespace grant for a user.
+      description: Grant namespace permissions to a user.
+      operationId: adminCreateNamespaceGrant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NamespaceGrantRequest'
+      responses:
+        '201':
+          description: Grant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-NamespaceGrantResponseArray'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or namespace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - admin-grants
+      summary: List namespace grants for a user.
+      description: List all namespace grants for a specific user.
+      operationId: adminListNamespaceGrants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of namespace grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-NamespaceGrantResponseArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/users/{id}/namespace-grants/{ns_id}:
+    get:
+      tags:
+        - admin-grants
+      summary: Get a namespace grant.
+      description: Retrieve a specific namespace grant for a user.
+      operationId: adminGetNamespaceGrant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+        - name: ns_id
+          in: path
+          description: Namespace ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Namespace grant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-NamespaceGrantResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or grant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - admin-grants
+      summary: Delete a namespace grant.
+      description: Remove namespace permissions from a user.
+      operationId: adminDeleteNamespaceGrant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+        - name: ns_id
+          in: path
+          description: Namespace ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Grant deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or grant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # ADMIN API - Repo Grants
+  # ============================================================================
+  /api/v1/admin/users/{id}/repo-grants:
+    post:
+      tags:
+        - admin-grants
+      summary: Create repo grant for a user.
+      description: Grant repository permissions to a user.
+      operationId: adminCreateRepoGrant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepoGrantRequest'
+      responses:
+        '201':
+          description: Grant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RepoGrantResponseArray'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or repo not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - admin-grants
+      summary: List repo grants for a user.
+      description: List all repository grants for a specific user.
+      operationId: adminListRepoGrants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of repo grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RepoGrantResponseArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/admin/users/{id}/repo-grants/{repo_id}:
+    get:
+      tags:
+        - admin-grants
+      summary: Get a repo grant.
+      description: Retrieve a specific repository grant for a user.
+      operationId: adminGetRepoGrant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+        - name: repo_id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Repo grant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RepoGrantResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or grant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - admin-grants
+      summary: Delete a repo grant.
+      description: Remove repository permissions from a user.
+      operationId: adminDeleteRepoGrant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: User ID
+          required: true
+          schema:
+            type: string
+        - name: repo_id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Grant deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or grant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # USER API - Namespaces
+  # ============================================================================
+  /api/v1/namespaces:
+    get:
+      tags:
+        - namespaces
+      summary: List accessible namespaces.
+      description: List all namespaces the current user has access to.
+      operationId: listNamespaces
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of namespaces
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-NamespaceResponseArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/namespaces/{name}:
+    patch:
+      tags:
+        - namespaces
+      summary: Update a namespace.
+      description: Update namespace settings like repo limit or storage limit.
+      operationId: updateNamespace
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNamespaceRequest'
+      responses:
+        '200':
+          description: Namespace updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Namespace'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Namespace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - namespaces
+      summary: Delete a namespace.
+      description: Delete a namespace (must be empty).
+      operationId: deleteNamespace
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Namespace deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Namespace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/namespaces/{name}/grants:
+    get:
+      tags:
+        - namespaces
+      summary: List grants for a namespace.
+      description: List all user grants for a specific namespace.
+      operationId: listNamespaceGrants
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: name
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of user grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-UserGrantResponseArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Namespace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # USER API - Repositories
+  # ============================================================================
+  /api/v1/repos:
+    get:
+      tags:
+        - repos
+      summary: List repositories.
+      description: List repositories with optional namespace filter.
+      operationId: listRepos
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: namespace
+          in: query
+          description: Filter by namespace name
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of repositories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-Repo'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - repos
+      summary: Create a repository.
+      description: Create a new repository in a namespace.
+      operationId: createRepo
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRepoRequest'
+      responses:
+        '201':
+          description: Repository created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Repo'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Repository already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}:
+    get:
+      tags:
+        - repos
+      summary: Get a repository.
+      description: Retrieve details of a specific repository.
+      operationId: getRepo
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Repository details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Repo'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+        - repos
+      summary: Update a repository.
+      description: Update repository settings.
+      operationId: updateRepo
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRepoRequest'
+      responses:
+        '200':
+          description: Repository updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Repo'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - repos
+      summary: Delete a repository.
+      description: Delete a repository and all its contents.
+      operationId: deleteRepo
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Repository deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/tags:
+    get:
+      tags:
+        - repos
+      summary: List tags for a repository.
+      description: Get all tags associated with a repository.
+      operationId: listRepoTags
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TagArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - repos
+      summary: Add tags to a repository.
+      description: Add one or more tags to a repository.
+      operationId: addRepoTags
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepoTagsRequest'
+      responses:
+        '200':
+          description: Tags added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TagArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - repos
+      summary: Set tags for a repository.
+      description: Replace all tags on a repository with a new set.
+      operationId: setRepoTags
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepoTagsRequest'
+      responses:
+        '200':
+          description: Tags set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TagArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/tags/{tag_id}:
+    delete:
+      tags:
+        - repos
+      summary: Remove a tag from a repository.
+      description: Remove a specific tag from a repository.
+      operationId: removeRepoTag
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: tag_id
+          in: path
+          description: Tag ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Tag removed successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or tag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/folders:
+    get:
+      tags:
+        - repos
+      summary: Get the folder for a repository.
+      description: Get the folder containing this repository, if any. A repository can belong to at most one folder.
+      operationId: listRepoFolders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of folders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-FolderArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - repos
+      summary: Set the folder for a repository.
+      description: Set or change the folder for a repository. A repository can belong to at most one folder.
+      operationId: addRepoToFolder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetRepoFolderRequest'
+      responses:
+        '200':
+          description: Repository folder set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-FolderArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/folders/{folder_id}:
+    delete:
+      tags:
+        - repos
+      summary: Remove repository from a folder.
+      description: Remove the repository from a specific folder.
+      operationId: removeRepoFromFolder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: folder_id
+          in: path
+          description: Folder ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Repository removed from folder
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # USER API - Tags
+  # ============================================================================
+  /api/v1/tags:
+    get:
+      tags:
+        - tags
+      summary: List tags.
+      description: List all tags with optional namespace filter.
+      operationId: listTags
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: namespace
+          in: query
+          description: Filter by namespace name
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-Tag'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - tags
+      summary: Create a tag.
+      description: Create a new tag for organizing repositories.
+      operationId: createTag
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTagRequest'
+      responses:
+        '201':
+          description: Tag created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Tag'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Tag already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/tags/{id}:
+    get:
+      tags:
+        - tags
+      summary: Get a tag.
+      description: Retrieve details of a specific tag.
+      operationId: getTag
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Tag ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tag details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Tag'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Tag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+        - tags
+      summary: Update a tag.
+      description: Update tag properties.
+      operationId: updateTag
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Tag ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTagRequest'
+      responses:
+        '200':
+          description: Tag updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Tag'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Tag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - tags
+      summary: Delete a tag.
+      description: Delete a tag. Use force=true to delete even if repos are tagged.
+      operationId: deleteTag
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Tag ID
+          required: true
+          schema:
+            type: string
+        - name: force
+          in: query
+          description: Force delete even if tag is in use
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Tag deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Tag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # USER API - Folders
+  # ============================================================================
+  /api/v1/folders:
+    get:
+      tags:
+        - folders
+      summary: List folders.
+      description: List folders with optional namespace and parent filters.
+      operationId: listFolders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: namespace
+          in: query
+          description: Filter by namespace name
+          required: false
+          schema:
+            type: string
+        - name: parent_id
+          in: query
+          description: Filter by parent folder ID
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of folders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-Folder'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - folders
+      summary: Create a folder.
+      description: Create a new folder for organizing repositories.
+      operationId: createFolder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFolderRequest'
+      responses:
+        '201':
+          description: Folder created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Folder'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Folder already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/folders/{id}:
+    get:
+      tags:
+        - folders
+      summary: Get a folder.
+      description: Retrieve details of a specific folder.
+      operationId: getFolder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Folder ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Folder details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Folder'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags:
+        - folders
+      summary: Update a folder.
+      description: Update folder properties or move to a different parent.
+      operationId: updateFolder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Folder ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFolderRequest'
+      responses:
+        '200':
+          description: Folder updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-Folder'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - folders
+      summary: Delete a folder.
+      description: Delete a folder. Use force=true to delete even if not empty, recursive=true to delete children.
+      operationId: deleteFolder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Folder ID
+          required: true
+          schema:
+            type: string
+        - name: force
+          in: query
+          description: Force delete even if folder contains repos
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: recursive
+          in: query
+          description: Recursively delete child folders
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Folder deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/folders/{id}/children:
+    get:
+      tags:
+        - folders
+      summary: List child folders.
+      description: Get all child folders of a specific folder.
+      operationId: listFolderChildren
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Folder ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of child folders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-FolderArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/folders/{id}/repos:
+    get:
+      tags:
+        - folders
+      summary: List repositories in a folder.
+      description: Get all repositories contained in a specific folder.
+      operationId: listFolderRepos
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Folder ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of repositories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RepoArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Folder not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - References (Branches/Tags)
+  # ============================================================================
+  /api/v1/repos/{id}/refs:
+    get:
+      tags:
+        - refs
+      summary: List references.
+      description: List all branches and tags in a repository.
+      operationId: listRefs
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of references
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RefResponseArray'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - refs
+      summary: Create a reference.
+      description: Create a new branch or tag.
+      operationId: createRef
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRefRequest'
+      responses:
+        '201':
+          description: Reference created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RefResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/refs/{type}/{name}:
+    patch:
+      tags:
+        - refs
+      summary: Update a reference.
+      description: Update a branch or tag to point to a different commit.
+      operationId: updateRef
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          description: Reference type (branch or tag)
+          required: true
+          schema:
+            type: string
+            enum:
+              - branch
+              - tag
+        - name: name
+          in: path
+          description: Reference name (can contain forward slashes, e.g., "feature/my-branch")
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRefRequest'
+      responses:
+        '200':
+          description: Reference updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-RefResponse'
+        '400':
+          description: Invalid input or expected SHA mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or reference not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - refs
+      summary: Delete a reference.
+      description: Delete a branch or tag.
+      operationId: deleteRef
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          description: Reference type (branch or tag)
+          required: true
+          schema:
+            type: string
+            enum:
+              - branch
+              - tag
+        - name: name
+          in: path
+          description: Reference name (can contain forward slashes, e.g., "feature/my-branch")
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Reference deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or reference not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/default-branch:
+    put:
+      tags:
+        - refs
+      summary: Set default branch.
+      description: Set the default branch for a repository.
+      operationId: setDefaultBranch
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetDefaultBranchRequest'
+      responses:
+        '204':
+          description: Default branch set successfully
+        '400':
+          description: Invalid branch name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or branch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Commits
+  # ============================================================================
+  /api/v1/repos/{id}/commits:
+    get:
+      tags:
+        - commits
+      summary: List commits.
+      description: List commits with optional ref and path filters.
+      operationId: listCommits
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: query
+          description: Branch, tag, or commit SHA to list commits from
+          required: false
+          schema:
+            type: string
+        - name: path
+          in: query
+          description: Filter commits affecting this path
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Pagination cursor
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of commits to return (default 50, max 100)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: List of commits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse-CommitResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or ref not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - commits
+      summary: Create a multi-action commit.
+      description: Create a commit with multiple file actions (create, update, delete, move).
+      operationId: createMultiCommit
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MultiCommitRequest'
+      responses:
+        '201':
+          description: Commit created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-MutationResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or ref not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/commits/{sha}:
+    get:
+      tags:
+        - commits
+      summary: Get a commit.
+      description: Retrieve details of a specific commit.
+      operationId: getCommit
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: path
+          description: Commit SHA
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Commit details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-CommitResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or commit not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/commits/{sha}/diff:
+    get:
+      tags:
+        - commits
+      summary: Get commit diff.
+      description: Get the diff for a specific commit.
+      operationId: getCommitDiff
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: path
+          description: Commit SHA
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Commit diff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-DiffResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or commit not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Compare
+  # ============================================================================
+  /api/v1/repos/{id}/compare/{spec}:
+    get:
+      tags:
+        - commits
+      summary: Compare two refs.
+      description: Compare two refs and get the diff between them. Spec format is 'base...head'.
+      operationId: compareRefs
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: spec
+          in: path
+          description: Compare spec in format 'base...head'
+          required: true
+          schema:
+            type: string
+          examples:
+            - main...feature-branch
+        - name: cursor
+          in: query
+          description: Pagination cursor for commits
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of commits to return
+          required: false
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-CompareResponse'
+        '400':
+          description: Invalid compare spec
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or ref not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Tree
+  # ============================================================================
+  /api/v1/repos/{id}/tree/{ref}:
+    get:
+      tags:
+        - content
+      summary: Get repository tree.
+      description: Get the file tree at the root of a repository.
+      operationId: getTree
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch, tag, or commit SHA
+          required: true
+          schema:
+            type: string
+        - name: depth
+          in: query
+          description: Depth of tree traversal (default 1, max 10)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+            maximum: 10
+      responses:
+        '200':
+          description: Tree structure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TreeEntryResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or ref not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/tree/{ref}/{path}:
+    get:
+      tags:
+        - content
+      summary: Get tree at path.
+      description: Get the file tree at a specific path in a repository.
+      operationId: getTreeAtPath
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch, tag, or commit SHA
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          description: Path within the repository (can contain forward slashes for nested paths, e.g., "src/lib/utils.rs")
+          required: true
+          schema:
+            type: string
+        - name: depth
+          in: query
+          description: Depth of tree traversal (default 1, max 10)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+            maximum: 10
+      responses:
+        '200':
+          description: Tree structure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-TreeEntryResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository, ref, or path not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Blob
+  # ============================================================================
+  /api/v1/repos/{id}/blob/{ref}/{path}:
+    get:
+      tags:
+        - content
+      summary: Get file content.
+      description: Retrieve the content of a file at a specific path and ref.
+      operationId: getBlob
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch, tag, or commit SHA
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          description: File path (can contain forward slashes for nested paths, e.g., "src/lib/utils.rs")
+          required: true
+          schema:
+            type: string
+        - name: raw
+          in: query
+          description: Return raw file content instead of JSON
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: history
+          in: query
+          description: Include commit history for the file
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: at
+          in: query
+          description: Get file content at a specific commit SHA
+          required: false
+          schema:
+            type: string
+        - name: parsed
+          in: query
+          description: Parse frontmatter from markdown files
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: cursor
+          in: query
+          description: Pagination cursor for history
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Limit for history entries
+          required: false
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-EnhancedBlobResponse'
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository, ref, or file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - content
+      summary: Create or update a file.
+      description: Create a new file or update an existing file in the repository.
+      operationId: putBlob
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch name
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          description: File path (can contain forward slashes for nested paths, e.g., "src/lib/utils.rs")
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutBlobRequest'
+      responses:
+        '201':
+          description: File created or updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-MutationResponse'
+        '400':
+          description: Invalid input or SHA mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or branch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - content
+      summary: Delete a file.
+      description: Delete a file from the repository.
+      operationId: deleteBlob
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch name
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          description: File path (can contain forward slashes for nested paths, e.g., "src/lib/utils.rs")
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteBlobRequest'
+      responses:
+        '200':
+          description: File deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-MutationResponse'
+        '400':
+          description: Invalid input or SHA mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository, branch, or file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/repos/{id}/upload/{ref}/{path}:
+    post:
+      tags:
+        - content
+      summary: Upload a binary file.
+      description: Upload a binary file to the repository. Max size is 100MB.
+      operationId: uploadBlob
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch name
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          description: File path (can contain forward slashes for nested paths, e.g., "src/lib/utils.rs")
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-MutationResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or branch not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File too large (max 100MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Blame
+  # ============================================================================
+  /api/v1/repos/{id}/blame/{ref}/{path}:
+    get:
+      tags:
+        - content
+      summary: Get file blame.
+      description: Get blame information showing which commit last modified each line.
+      operationId: getBlame
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch, tag, or commit SHA
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          description: File path (can contain forward slashes for nested paths, e.g., "src/lib/utils.rs")
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Blame information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-BlameResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository, ref, or file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Archive
+  # ============================================================================
+  /api/v1/repos/{id}/archive/{ref}:
+    get:
+      tags:
+        - content
+      summary: Download repository archive.
+      description: Download the repository as a tar, tar.gz, or zip archive.
+      operationId: getArchive
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: path
+          description: Branch, tag, or commit SHA
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: Archive format
+          required: false
+          schema:
+            type: string
+            enum:
+              - tar
+              - tar.gz
+              - zip
+            default: tar.gz
+        - name: path
+          in: query
+          description: Subdirectory to archive
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Archive file
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or ref not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Readme
+  # ============================================================================
+  /api/v1/repos/{id}/readme:
+    get:
+      tags:
+        - content
+      summary: Get repository readme.
+      description: Get the README file for a repository.
+      operationId: getReadme
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: query
+          description: Branch, tag, or commit SHA (defaults to default branch)
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Readme content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-ReadmeResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository or readme not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # CONTENT API - Search
+  # ============================================================================
+  /api/v1/repos/{id}/search:
+    get:
+      tags:
+        - content
+      summary: Search file paths.
+      description: Search for files by path pattern.
+      operationId: searchPaths
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          description: Repository ID
+          required: true
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Search query (path pattern)
+          required: true
+          schema:
+            type: string
+        - name: ref
+          in: query
+          description: Branch, tag, or commit SHA
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of results
+          required: false
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse-PathSearchResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================================
+  # GIT PROTOCOL - Smart HTTP
+  # ============================================================================
+  /git/{namespace}/{repo}/info/refs:
+    get:
+      tags:
+        - git-protocol
+      summary: Git info/refs.
+      description: Git smart HTTP protocol endpoint for fetching refs.
+      operationId: gitInfoRefs
+      security:
+        - basicAuth: []
+        - {}
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+        - name: service
+          in: query
+          description: Git service type
+          required: true
+          schema:
+            type: string
+            enum:
+              - git-upload-pack
+              - git-receive-pack
+      responses:
+        '200':
+          description: Git protocol response
+          content:
+            application/x-git-upload-pack-advertisement:
+              schema:
+                type: string
+                format: binary
+            application/x-git-receive-pack-advertisement:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid service
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Repository not found
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /git/{namespace}/{repo}/git-upload-pack:
+    post:
+      tags:
+        - git-protocol
+      summary: Git upload-pack.
+      description: Git smart HTTP protocol endpoint for fetching objects (git fetch/clone).
+      operationId: gitUploadPack
+      security:
+        - basicAuth: []
+        - {}
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-git-upload-pack-request:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Git protocol response
+          content:
+            application/x-git-upload-pack-result:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Repository not found
+
+  /git/{namespace}/{repo}/git-receive-pack:
+    post:
+      tags:
+        - git-protocol
+      summary: Git receive-pack.
+      description: Git smart HTTP protocol endpoint for pushing objects (git push).
+      operationId: gitReceivePack
+      security:
+        - basicAuth: []
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-git-receive-pack-request:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Git protocol response
+          content:
+            application/x-git-receive-pack-result:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Repository not found
+
+  # ============================================================================
+  # GIT LFS
+  # ============================================================================
+  /git/{namespace}/{repo}/info/lfs/objects/batch:
+    post:
+      tags:
+        - git-lfs
+      summary: LFS batch API.
+      description: Git LFS batch API for uploading and downloading large files.
+      operationId: lfsBatch
+      security:
+        - basicAuth: []
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/vnd.git-lfs+json:
+            schema:
+              $ref: '#/components/schemas/LfsBatchRequest'
+      responses:
+        '200':
+          description: Batch response with upload/download URLs
+          content:
+            application/vnd.git-lfs+json:
+              schema:
+                $ref: '#/components/schemas/LfsBatchResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/vnd.git-lfs+json:
+              schema:
+                $ref: '#/components/schemas/LfsError'
+        '401':
+          description: Unauthorized
+          content:
+            application/vnd.git-lfs+json:
+              schema:
+                $ref: '#/components/schemas/LfsError'
+        '403':
+          description: Forbidden
+          content:
+            application/vnd.git-lfs+json:
+              schema:
+                $ref: '#/components/schemas/LfsError'
+        '404':
+          description: Repository not found
+          content:
+            application/vnd.git-lfs+json:
+              schema:
+                $ref: '#/components/schemas/LfsError'
+
+  /git/{namespace}/{repo}/info/lfs/objects/{oid}:
+    get:
+      tags:
+        - git-lfs
+      summary: Download LFS object.
+      description: Download a Git LFS object by OID.
+      operationId: lfsDownload
+      security:
+        - basicAuth: []
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+        - name: oid
+          in: path
+          description: Object ID (SHA256 hash)
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Object not found
+    put:
+      tags:
+        - git-lfs
+      summary: Upload LFS object.
+      description: Upload a Git LFS object.
+      operationId: lfsUpload
+      security:
+        - basicAuth: []
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+        - name: oid
+          in: path
+          description: Object ID (SHA256 hash)
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: Object uploaded successfully
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Repository not found
+
+  /git/{namespace}/{repo}/info/lfs/verify:
+    post:
+      tags:
+        - git-lfs
+      summary: Verify LFS object.
+      description: Verify that a Git LFS object was uploaded successfully.
+      operationId: lfsVerify
+      security:
+        - basicAuth: []
+      parameters:
+        - name: namespace
+          in: path
+          description: Namespace name
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          description: Repository name
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/vnd.git-lfs+json:
+            schema:
+              $ref: '#/components/schemas/LfsVerifyRequest'
+      responses:
+        '204':
+          description: Object verified successfully
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Object not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token authentication for API endpoints
+    basicAuth:
+      type: http
+      scheme: basic
+      description: HTTP Basic authentication for Git protocol endpoints. Use any username with your bearer token as the password.
+
+  schemas:
+    # ============================================================================
+    # Error Response
+    # ============================================================================
+    ErrorResponse:
+      type: object
+      properties:
+        data:
+          type: 'null'
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+
+    # ============================================================================
+    # Namespace Schemas
+    # ============================================================================
+    Namespace:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique namespace identifier
+          examples:
+            - ns_01234567890abcdef
+        name:
+          type: string
+          description: Namespace name
+          examples:
+            - my-namespace
+        repo_limit:
+          type: integer
+          format: int32
+          description: Maximum number of repositories allowed
+          examples:
+            - 100
+        storage_limit_bytes:
+          type: integer
+          format: int64
+          description: Maximum storage in bytes
+          examples:
+            - 10737418240
+        external_id:
+          type: string
+          description: External identifier for integration with other systems
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+      required:
+        - id
+        - name
+        - created_at
+
+    NamespaceResponse:
+      allOf:
+        - $ref: '#/components/schemas/Namespace'
+        - type: object
+          properties:
+            is_primary:
+              type: boolean
+              description: Whether this is the user's primary namespace
+          required:
+            - is_primary
+
+    CreateNamespaceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Namespace name (1-64 characters, alphanumeric with hyphens/underscores)
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]*$'
+          examples:
+            - my-namespace
+        repo_limit:
+          type: integer
+          format: int32
+          description: Maximum number of repositories
+          examples:
+            - 100
+        storage_limit_bytes:
+          type: integer
+          format: int64
+          description: Maximum storage in bytes
+          examples:
+            - 10737418240
+      required:
+        - name
+
+    UpdateNamespaceRequest:
+      type: object
+      properties:
+        repo_limit:
+          type: integer
+          format: int32
+          description: Maximum number of repositories
+        storage_limit_bytes:
+          type: integer
+          format: int64
+          description: Maximum storage in bytes
+
+    # ============================================================================
+    # User Schemas
+    # ============================================================================
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique user identifier
+          examples:
+            - usr_01234567890abcdef
+        primary_namespace_id:
+          type: string
+          description: ID of the user's primary namespace
+          examples:
+            - ns_01234567890abcdef
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - primary_namespace_id
+        - created_at
+        - updated_at
+
+    CreateUserRequest:
+      type: object
+      properties:
+        namespace_name:
+          type: string
+          description: Name for the user's primary namespace
+          examples:
+            - johndoe
+      required:
+        - namespace_name
+
+    # ============================================================================
+    # Token Schemas
+    # ============================================================================
+    TokenResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Token identifier
+          examples:
+            - tok_01234567890abcdef
+        is_admin:
+          type: boolean
+          description: Whether this is an admin token
+        user_id:
+          type: string
+          description: Associated user ID (null for admin tokens)
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration timestamp (null if never expires)
+        last_used_at:
+          type: string
+          format: date-time
+          description: Last usage timestamp
+        namespace_grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamespaceGrantResponse'
+        repo_grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/RepoGrantResponse'
+      required:
+        - id
+        - is_admin
+        - created_at
+        - namespace_grants
+        - repo_grants
+
+    CreateUserTokenRequest:
+      type: object
+      properties:
+        expires_in_seconds:
+          type: integer
+          format: int64
+          description: Token expiration time in seconds from now
+          examples:
+            - 86400
+
+    CreateTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The actual token string (only shown once)
+          examples:
+            - ctm_AbCdEfGhIjKlMnOpQrStUvWxYz123456
+        metadata:
+          $ref: '#/components/schemas/TokenResponse'
+      required:
+        - token
+        - metadata
+
+    # ============================================================================
+    # Grant Schemas
+    # ============================================================================
+    NamespaceGrantRequest:
+      type: object
+      properties:
+        namespace_id:
+          type: string
+          description: Namespace ID to grant access to
+        allow:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'namespace:read'
+              - 'namespace:write'
+              - 'namespace:admin'
+          description: Permissions to allow
+        deny:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'namespace:read'
+              - 'namespace:write'
+              - 'namespace:admin'
+          description: Permissions to explicitly deny
+      required:
+        - namespace_id
+        - allow
+
+    NamespaceGrantResponse:
+      type: object
+      properties:
+        namespace_id:
+          type: string
+          description: Namespace ID
+        allow:
+          type: array
+          items:
+            type: string
+          description: Allowed permissions
+        deny:
+          type: array
+          items:
+            type: string
+          description: Denied permissions
+      required:
+        - namespace_id
+        - allow
+        - deny
+
+    RepoGrantRequest:
+      type: object
+      properties:
+        repo_id:
+          type: string
+          description: Repository ID to grant access to
+        allow:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'repo:read'
+              - 'repo:write'
+              - 'repo:admin'
+          description: Permissions to allow
+        deny:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'repo:read'
+              - 'repo:write'
+              - 'repo:admin'
+          description: Permissions to explicitly deny
+      required:
+        - repo_id
+        - allow
+
+    RepoGrantResponse:
+      type: object
+      properties:
+        repo_id:
+          type: string
+          description: Repository ID
+        allow:
+          type: array
+          items:
+            type: string
+          description: Allowed permissions
+        deny:
+          type: array
+          items:
+            type: string
+          description: Denied permissions
+      required:
+        - repo_id
+        - allow
+        - deny
+
+    UserGrantResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: User ID
+        allow:
+          type: array
+          items:
+            type: string
+          description: Allowed permissions
+        deny:
+          type: array
+          items:
+            type: string
+          description: Denied permissions
+      required:
+        - user_id
+        - allow
+        - deny
+
+    # ============================================================================
+    # Repository Schemas
+    # ============================================================================
+    Repo:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique repository identifier
+          examples:
+            - repo_01234567890abcdef
+        name:
+          type: string
+          description: Repository name
+          examples:
+            - my-project
+        description:
+          type: string
+          description: Repository description
+        public:
+          type: boolean
+          description: Whether the repository is publicly accessible
+        namespace_id:
+          type: string
+          description: Owning namespace ID
+        default_branch:
+          type: string
+          description: Default branch name
+          examples:
+            - main
+        size_bytes:
+          type: integer
+          format: int64
+          description: Repository size in bytes
+          examples:
+            - 1048576
+        folder_id:
+          type: string
+          description: ID of the folder containing this repository
+        last_push_at:
+          type: string
+          format: date-time
+          description: Timestamp of the last push to this repository
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - name
+        - public
+        - namespace_id
+        - size_bytes
+        - created_at
+        - updated_at
+
+    CreateRepoRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Repository name
+          minLength: 1
+          maxLength: 64
+          examples:
+            - my-project
+        description:
+          type: string
+          description: Repository description
+        public:
+          type: boolean
+          description: Whether the repository is publicly accessible
+          default: false
+        namespace:
+          type: string
+          description: Namespace name (uses primary namespace if not specified)
+      required:
+        - name
+
+    UpdateRepoRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New repository name
+        description:
+          type: string
+          description: New description
+        public:
+          type: boolean
+          description: New visibility setting
+
+    # ============================================================================
+    # Tag Schemas
+    # ============================================================================
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique tag identifier
+          examples:
+            - tag_01234567890abcdef
+        name:
+          type: string
+          description: Tag name
+          examples:
+            - important
+        color:
+          type: string
+          description: Tag color (hex code)
+          examples:
+            - '#ff5733'
+        namespace_id:
+          type: string
+          description: Owning namespace ID
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+      required:
+        - id
+        - name
+        - namespace_id
+        - created_at
+
+    CreateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Tag name
+          examples:
+            - important
+        color:
+          type: string
+          description: Tag color (hex code)
+          examples:
+            - '#ff5733'
+        namespace:
+          type: string
+          description: Namespace name (uses primary namespace if not specified)
+      required:
+        - name
+
+    UpdateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New tag name
+        color:
+          type: string
+          description: New tag color
+
+    RepoTagsRequest:
+      type: object
+      properties:
+        tag_ids:
+          type: array
+          items:
+            type: string
+          description: List of tag IDs
+      required:
+        - tag_ids
+
+    # ============================================================================
+    # Folder Schemas
+    # ============================================================================
+    Folder:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique folder identifier
+          examples:
+            - fld_01234567890abcdef
+        name:
+          type: string
+          description: Folder name
+          examples:
+            - projects
+        parent_id:
+          type: string
+          description: Parent folder ID (null for root folders)
+        namespace_id:
+          type: string
+          description: Owning namespace ID
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - name
+        - namespace_id
+        - created_at
+        - updated_at
+
+    CreateFolderRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Folder name
+          examples:
+            - projects
+        parent_id:
+          type: string
+          description: Parent folder ID (null for root folder)
+        namespace:
+          type: string
+          description: Namespace name (uses primary namespace if not specified)
+      required:
+        - name
+
+    UpdateFolderRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New folder name
+        parent_id:
+          type: string
+          description: New parent folder ID
+
+    SetRepoFolderRequest:
+      type: object
+      properties:
+        folder_id:
+          type: string
+          description: Folder ID to add the repo to
+
+    # ============================================================================
+    # API Response Wrappers
+    # ============================================================================
+    ApiResponse-Namespace:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Namespace'
+        error:
+          type: 'null'
+
+    ApiResponse-User:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+        error:
+          type: 'null'
+
+    ApiResponse-TokenResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TokenResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-TokenResponseArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-CreateTokenResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CreateTokenResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-NamespaceGrantResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/NamespaceGrantResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-NamespaceGrantResponseArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamespaceGrantResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-RepoGrantResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RepoGrantResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-RepoGrantResponseArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RepoGrantResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-NamespaceResponseArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamespaceResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-UserGrantResponseArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserGrantResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-Repo:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Repo'
+        error:
+          type: 'null'
+
+    ApiResponse-RepoArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Repo'
+        error:
+          type: 'null'
+
+    ApiResponse-Tag:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Tag'
+        error:
+          type: 'null'
+
+    ApiResponse-TagArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        error:
+          type: 'null'
+
+    ApiResponse-Folder:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Folder'
+        error:
+          type: 'null'
+
+    ApiResponse-FolderArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Folder'
+        error:
+          type: 'null'
+
+    # ============================================================================
+    # Paginated Response Wrappers
+    # ============================================================================
+    PaginatedResponse-Namespace:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Namespace'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    PaginatedResponse-User:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    PaginatedResponse-TokenResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenResponse'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    PaginatedResponse-Repo:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Repo'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    PaginatedResponse-Tag:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    PaginatedResponse-Folder:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Folder'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    # ============================================================================
+    # Reference Schemas
+    # ============================================================================
+    RefResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Reference name
+          examples:
+            - main
+        type:
+          type: string
+          description: Reference type
+          enum:
+            - branch
+            - tag
+        commit_sha:
+          type: string
+          description: SHA of the commit this ref points to
+          examples:
+            - a1b2c3d4e5f6789012345678901234567890abcd
+        is_default:
+          type: boolean
+          description: Whether this is the default branch
+      required:
+        - name
+        - type
+        - commit_sha
+        - is_default
+
+    CreateRefRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Reference name
+          examples:
+            - feature-branch
+        type:
+          type: string
+          description: Reference type
+          enum:
+            - branch
+            - tag
+        target_sha:
+          type: string
+          description: SHA of the commit to point to
+          examples:
+            - a1b2c3d4e5f6789012345678901234567890abcd
+        force:
+          type: boolean
+          description: Force create even if ref already exists
+          default: false
+      required:
+        - name
+        - type
+        - target_sha
+
+    UpdateRefRequest:
+      type: object
+      properties:
+        target_sha:
+          type: string
+          description: New target commit SHA
+          examples:
+            - a1b2c3d4e5f6789012345678901234567890abcd
+        expected_sha:
+          type: string
+          description: Expected current SHA (for optimistic locking)
+      required:
+        - target_sha
+
+    SetDefaultBranchRequest:
+      type: object
+      properties:
+        branch:
+          type: string
+          description: Branch name to set as default
+          examples:
+            - main
+      required:
+        - branch
+
+    # ============================================================================
+    # Commit Schemas
+    # ============================================================================
+    SignatureResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Author/committer name
+          examples:
+            - John Doe
+        email:
+          type: string
+          description: Author/committer email
+          examples:
+            - john@example.com
+        date:
+          type: string
+          format: date-time
+          description: Timestamp of the action
+      required:
+        - name
+        - email
+        - date
+
+    CommitStats:
+      type: object
+      properties:
+        files_changed:
+          type: integer
+          description: Number of files changed
+        additions:
+          type: integer
+          description: Number of lines added
+        deletions:
+          type: integer
+          description: Number of lines deleted
+      required:
+        - files_changed
+        - additions
+        - deletions
+
+    CommitResponse:
+      type: object
+      properties:
+        sha:
+          type: string
+          description: Commit SHA
+          examples:
+            - a1b2c3d4e5f6789012345678901234567890abcd
+        message:
+          type: string
+          description: Commit message
+          examples:
+            - Add new feature
+        author:
+          $ref: '#/components/schemas/SignatureResponse'
+        committer:
+          $ref: '#/components/schemas/SignatureResponse'
+        parent_shas:
+          type: array
+          items:
+            type: string
+          description: Parent commit SHAs
+        tree_sha:
+          type: string
+          description: Tree object SHA
+        stats:
+          $ref: '#/components/schemas/CommitStats'
+      required:
+        - sha
+        - message
+        - author
+        - committer
+        - parent_shas
+        - tree_sha
+
+    CommitAction:
+      type: object
+      description: A file action to perform in a commit
+      properties:
+        action:
+          type: string
+          description: Type of action
+          enum:
+            - create
+            - update
+            - delete
+            - move
+        path:
+          type: string
+          description: File path (for create, update, delete)
+        from:
+          type: string
+          description: Source path (for move)
+        to:
+          type: string
+          description: Destination path (for move)
+        content:
+          type: string
+          description: File content (for create, update)
+        encoding:
+          type: string
+          description: Content encoding
+          enum:
+            - text
+            - base64
+          default: text
+        sha:
+          type: string
+          description: Expected file SHA (for update, delete)
+      required:
+        - action
+
+    MultiCommitRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Commit message
+          examples:
+            - Add multiple files
+        branch:
+          type: string
+          description: Branch to commit to (defaults to default branch)
+          examples:
+            - main
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitAction'
+          description: List of file actions to perform
+      required:
+        - message
+        - actions
+
+    MutationResponse:
+      type: object
+      properties:
+        commit_sha:
+          type: string
+          description: SHA of the created commit
+          examples:
+            - a1b2c3d4e5f6789012345678901234567890abcd
+        ref_name:
+          type: string
+          description: Name of the updated ref
+          examples:
+            - main
+        file:
+          $ref: '#/components/schemas/FileInfo'
+      required:
+        - commit_sha
+        - ref_name
+
+    FileInfo:
+      type: object
+      properties:
+        path:
+          type: string
+          description: File path
+        sha:
+          type: string
+          description: File blob SHA
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+      required:
+        - path
+        - sha
+        - size
+
+    # ============================================================================
+    # Diff Schemas
+    # ============================================================================
+    DiffResponse:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileDiff'
+          description: List of file diffs
+        stats:
+          $ref: '#/components/schemas/CommitStats'
+      required:
+        - files
+
+    FileDiff:
+      type: object
+      properties:
+        path:
+          type: string
+          description: File path
+        old_path:
+          type: string
+          description: Previous file path (for renames)
+        status:
+          type: string
+          description: Change status
+          enum:
+            - added
+            - deleted
+            - modified
+            - renamed
+            - copied
+        additions:
+          type: integer
+          description: Lines added
+        deletions:
+          type: integer
+          description: Lines deleted
+        patch:
+          type: string
+          description: Unified diff patch
+        is_binary:
+          type: boolean
+          description: Whether the file is binary
+      required:
+        - path
+        - status
+        - additions
+        - deletions
+        - is_binary
+
+    CompareResponse:
+      type: object
+      properties:
+        base_ref:
+          type: string
+          description: Base reference name
+        head_ref:
+          type: string
+          description: Head reference name
+        base_sha:
+          type: string
+          description: Base commit SHA
+        head_sha:
+          type: string
+          description: Head commit SHA
+        merge_base_sha:
+          type: string
+          description: Merge base commit SHA
+        ahead_by:
+          type: integer
+          description: Commits ahead of base
+        behind_by:
+          type: integer
+          description: Commits behind base
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitResponse'
+          description: Commits between base and head
+        next_cursor:
+          type: string
+          description: Pagination cursor for commits
+        has_more:
+          type: boolean
+          description: Whether more commits exist
+        diff:
+          $ref: '#/components/schemas/DiffResponse'
+      required:
+        - base_ref
+        - head_ref
+        - base_sha
+        - head_sha
+        - merge_base_sha
+        - ahead_by
+        - behind_by
+        - commits
+        - has_more
+        - diff
+
+    # ============================================================================
+    # Tree Schemas
+    # ============================================================================
+    TreeEntryResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Entry name
+          examples:
+            - src
+        path:
+          type: string
+          description: Full path
+          examples:
+            - src/main.rs
+        type:
+          type: string
+          description: Entry type
+          enum:
+            - tree
+            - blob
+            - commit
+        sha:
+          type: string
+          description: Object SHA
+        mode:
+          type: string
+          description: Git file mode
+          examples:
+            - '100644'
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes (for blobs)
+        has_children:
+          type: boolean
+          description: Whether this tree has children (for trees)
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/TreeEntryResponse'
+          description: Child entries (when depth > 1)
+      required:
+        - name
+        - path
+        - type
+        - sha
+        - mode
+        - children
+
+    # ============================================================================
+    # Blob Schemas
+    # ============================================================================
+    EnhancedBlobResponse:
+      type: object
+      properties:
+        sha:
+          type: string
+          description: Blob SHA
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        content:
+          type: string
+          description: File content (may be base64 encoded)
+        encoding:
+          type: string
+          description: Content encoding
+          enum:
+            - utf-8
+            - base64
+        is_binary:
+          type: boolean
+          description: Whether the file is binary
+        is_truncated:
+          type: boolean
+          description: Whether the content was truncated
+        frontmatter:
+          type: object
+          description: Parsed frontmatter (for markdown files with parsed=true)
+        body:
+          type: string
+          description: Body content without frontmatter
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitResponse'
+          description: Commit history for the file
+        history_cursor:
+          type: string
+          description: Pagination cursor for history
+        history_has_more:
+          type: boolean
+          description: Whether more history exists
+      required:
+        - sha
+        - size
+        - encoding
+        - is_binary
+        - is_truncated
+
+    PutBlobRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Commit message
+          examples:
+            - Update README.md
+        content:
+          type: string
+          description: File content
+        encoding:
+          type: string
+          description: Content encoding
+          enum:
+            - text
+            - base64
+          default: text
+        sha:
+          type: string
+          description: Expected file SHA (required for updates)
+      required:
+        - message
+        - content
+
+    DeleteBlobRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Commit message
+          examples:
+            - Delete old file
+        sha:
+          type: string
+          description: Expected file SHA
+      required:
+        - message
+        - sha
+
+    # ============================================================================
+    # Blame Schemas
+    # ============================================================================
+    BlameResponse:
+      type: object
+      properties:
+        path:
+          type: string
+          description: File path
+        ref:
+          type: string
+          description: Reference used
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlameLineResponse'
+          description: Blame information per line
+      required:
+        - path
+        - ref
+        - lines
+
+    BlameLineResponse:
+      type: object
+      properties:
+        line:
+          type: integer
+          description: Line number (1-indexed)
+        sha:
+          type: string
+          description: Commit SHA that last modified this line
+        author:
+          $ref: '#/components/schemas/SignatureResponse'
+        text:
+          type: string
+          description: Line content
+      required:
+        - line
+        - sha
+        - author
+        - text
+
+    # ============================================================================
+    # Readme Schemas
+    # ============================================================================
+    ReadmeResponse:
+      type: object
+      properties:
+        filename:
+          type: string
+          description: Readme filename
+          examples:
+            - README.md
+        content:
+          type: string
+          description: Readme content
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        sha:
+          type: string
+          description: Blob SHA
+        is_binary:
+          type: boolean
+          description: Whether the file is binary
+        is_truncated:
+          type: boolean
+          description: Whether the content was truncated
+      required:
+        - filename
+        - content
+        - size
+        - sha
+        - is_binary
+        - is_truncated
+
+    # ============================================================================
+    # Search Schemas
+    # ============================================================================
+    PathSearchResponse:
+      type: object
+      properties:
+        matches:
+          type: array
+          items:
+            type: string
+          description: List of matching file paths
+      required:
+        - matches
+
+    # ============================================================================
+    # Git LFS Schemas
+    # ============================================================================
+    LfsBatchRequest:
+      type: object
+      properties:
+        operation:
+          type: string
+          description: Operation type
+          enum:
+            - download
+            - upload
+        transfers:
+          type: array
+          items:
+            type: string
+          description: Transfer adapters (default is basic)
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/LfsObjectSpec'
+          description: Objects to process
+      required:
+        - operation
+        - objects
+
+    LfsObjectSpec:
+      type: object
+      properties:
+        oid:
+          type: string
+          description: Object ID (SHA256 hash)
+          examples:
+            - 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        size:
+          type: integer
+          format: int64
+          description: Object size in bytes
+      required:
+        - oid
+        - size
+
+    LfsBatchResponse:
+      type: object
+      properties:
+        transfer:
+          type: string
+          description: Transfer adapter being used
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/LfsObjectResponse'
+          description: Object responses
+      required:
+        - objects
+
+    LfsObjectResponse:
+      type: object
+      properties:
+        oid:
+          type: string
+          description: Object ID
+        size:
+          type: integer
+          format: int64
+          description: Object size
+        authenticated:
+          type: boolean
+          description: Whether the request was authenticated
+        actions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/LfsAction'
+          description: Available actions (download, upload, verify)
+        error:
+          $ref: '#/components/schemas/LfsObjectError'
+      required:
+        - oid
+        - size
+
+    LfsAction:
+      type: object
+      properties:
+        href:
+          type: string
+          format: uri
+          description: URL for the action
+        header:
+          type: object
+          additionalProperties:
+            type: string
+          description: Headers to include in the request
+        expires_in:
+          type: integer
+          description: Seconds until the action expires
+      required:
+        - href
+
+    LfsObjectError:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: Error code
+        message:
+          type: string
+          description: Error message
+      required:
+        - code
+        - message
+
+    LfsVerifyRequest:
+      type: object
+      properties:
+        oid:
+          type: string
+          description: Object ID to verify
+        size:
+          type: integer
+          format: int64
+          description: Expected object size
+      required:
+        - oid
+        - size
+
+    LfsError:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+        documentation_url:
+          type: string
+          description: URL to documentation
+        request_id:
+          type: string
+          description: Request ID for debugging
+      required:
+        - message
+
+    # ============================================================================
+    # Content API Response Wrappers
+    # ============================================================================
+    ApiResponse-RefResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RefResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-RefResponseArray:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-CommitResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CommitResponse'
+        error:
+          type: 'null'
+
+    PaginatedResponse-CommitResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitResponse'
+        next_cursor:
+          type: string
+          description: Cursor for the next page
+        has_more:
+          type: boolean
+          description: Whether more items exist
+        error:
+          type: 'null'
+      required:
+        - data
+        - has_more
+
+    ApiResponse-MutationResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/MutationResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-DiffResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/DiffResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-CompareResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CompareResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-TreeEntryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TreeEntryResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-EnhancedBlobResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/EnhancedBlobResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-BlameResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/BlameResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-ReadmeResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ReadmeResponse'
+        error:
+          type: 'null'
+
+    ApiResponse-PathSearchResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/PathSearchResponse'
+        error:
+          type: 'null'
