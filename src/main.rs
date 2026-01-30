@@ -240,11 +240,7 @@ fn create_default_user_prompt(
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("cutman=info".parse()?)
-                .add_directive("tower_http=debug".parse()?),
-        )
+        .with_env_filter(EnvFilter::from_default_env().add_directive("cutman=info".parse()?))
         .init();
 
     let cli = Cli::parse();

@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
+use axum::extract::Request;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::{Router, routing::get};
-use tower_http::trace::TraceLayer;
 
 use super::admin::admin_router;
 use super::content::content_router;
@@ -21,6 +24,27 @@ async fn health() -> &'static str {
     "OK"
 }
 
+async fn log_request(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let start = Instant::now();
+
+    let response = next.run(request).await;
+
+    let latency = start.elapsed();
+    let status = response.status();
+
+    tracing::info!(
+        "{} {} {} {}ms",
+        method,
+        uri.path(),
+        status.as_u16(),
+        latency.as_millis()
+    );
+
+    response
+}
+
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -28,6 +52,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest("/api/v1", user_router())
         .nest("/api/v1", content_router())
         .nest("/git", git_router())
-        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(log_request))
         .with_state(state)
 }
