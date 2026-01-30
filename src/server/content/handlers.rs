@@ -41,9 +41,9 @@ use super::git_ops::{
     CommitActionOp, GitError, apply_actions, build_diff, commit_to_response, compute_commit_stats,
     count_ahead_behind, create_commit_on_branch, create_ref, delete_ref, entry_type_str,
     file_exists, find_merge_base, get_blob_at_path, get_commit, get_default_branch,
-    get_file_history, get_tree, get_tree_at_path, is_binary, open_repo, resolve_ref, search_paths,
-    set_default_branch, signature_to_response, tree_with_blob, tree_without_entry, update_ref,
-    verify_blob_sha,
+    get_file_history, get_tree, get_tree_at_path, is_binary, open_or_init_repo, open_repo,
+    resolve_ref, search_paths, set_default_branch, signature_to_response, tree_with_blob,
+    tree_without_entry, update_ref, verify_blob_sha,
 };
 
 fn repo_path(state: &AppState, namespace_id: &str, repo_name: &str) -> std::path::PathBuf {
@@ -768,11 +768,11 @@ pub async fn get_readme(
     })))
 }
 
-/// Helper to load repo and check write access for authenticated user
-async fn load_repo_and_check_write_access(
+async fn load_repo_with_write_access(
     state: &Arc<AppState>,
     auth: &RequireUser,
     repo_id: &str,
+    init_if_missing: bool,
 ) -> Result<(crate::types::Repo, git2::Repository), ApiError> {
     let repo = state
         .store
@@ -788,7 +788,11 @@ async fn load_repo_and_check_write_access(
     )?;
 
     let path = repo_path(state, &repo.namespace_id, &repo.name);
-    let git_repo = open_repo(&path)?;
+    let git_repo = if init_if_missing {
+        open_or_init_repo(&path)?
+    } else {
+        open_repo(&path)?
+    };
 
     Ok((repo, git_repo))
 }
@@ -800,7 +804,7 @@ pub async fn create_ref_handler(
     Path(id): Path<String>,
     Json(req): Json<CreateRefRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &id, false).await?;
 
     let oid = create_ref(
         &git_repo,
@@ -838,7 +842,7 @@ pub async fn update_ref_handler(
     Path(path): Path<RefPath>,
     Json(req): Json<UpdateRefRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &path.id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &path.id, false).await?;
 
     let oid = update_ref(
         &git_repo,
@@ -864,7 +868,7 @@ pub async fn delete_ref_handler(
     State(state): State<Arc<AppState>>,
     Path(path): Path<RefPath>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &path.id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &path.id, false).await?;
 
     delete_ref(&git_repo, &path.ref_type, &path.name)?;
 
@@ -878,7 +882,7 @@ pub async fn set_default_branch_handler(
     Path(id): Path<String>,
     Json(req): Json<SetDefaultBranchRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &id, false).await?;
 
     set_default_branch(&git_repo, &req.branch)?;
 
@@ -928,11 +932,11 @@ fn get_commit_author(state: &AppState, user: &crate::types::User) -> (String, St
     (name, email)
 }
 
-fn resolve_branch(git_repo: &git2::Repository, ref_name: &str) -> Result<String, GitError> {
+fn resolve_branch(git_repo: &git2::Repository, ref_name: &str) -> String {
     if ref_name.is_empty() {
-        get_default_branch(git_repo).ok_or(GitError::EmptyRepo)
+        get_default_branch(git_repo).unwrap_or_else(|| "main".to_string())
     } else {
-        Ok(ref_name.to_string())
+        ref_name.to_string()
     }
 }
 
@@ -1047,14 +1051,14 @@ pub async fn put_blob(
     Path((id, ref_name, path)): Path<(String, String, String)>,
     Json(req): Json<PutBlobRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &id, false).await?;
 
     let path = path.trim_start_matches('/');
     if path.is_empty() {
         return Err(ApiError::bad_request("Path is required"));
     }
 
-    let branch = resolve_branch(&git_repo, &ref_name)?;
+    let branch = resolve_branch(&git_repo, &ref_name);
     let content = decode_content(&req.content, req.encoding.as_deref())?;
 
     let oid = resolve_ref(&git_repo, &branch)?;
@@ -1092,14 +1096,14 @@ pub async fn delete_blob(
     Path((id, ref_name, path)): Path<(String, String, String)>,
     Json(req): Json<DeleteBlobRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &id, false).await?;
 
     let path = path.trim_start_matches('/');
     if path.is_empty() {
         return Err(ApiError::bad_request("Path is required"));
     }
 
-    let branch = resolve_branch(&git_repo, &ref_name)?;
+    let branch = resolve_branch(&git_repo, &ref_name);
 
     let oid = resolve_ref(&git_repo, &branch)?;
     let commit = get_commit(&git_repo, oid)?;
@@ -1132,9 +1136,9 @@ pub async fn create_multi_commit(
     Path(id): Path<String>,
     Json(req): Json<MultiCommitRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &id, true).await?;
 
-    let branch = resolve_branch(&git_repo, req.branch.as_deref().unwrap_or(""))?;
+    let branch = resolve_branch(&git_repo, req.branch.as_deref().unwrap_or(""));
 
     if req.actions.is_empty() {
         return Err(ApiError::bad_request("At least one action is required"));
@@ -1211,14 +1215,14 @@ pub async fn upload_blob(
     Path((id, ref_name, path)): Path<(String, String, String)>,
     mut multipart: axum::extract::Multipart,
 ) -> Result<impl IntoResponse, ApiError> {
-    let (_repo, git_repo) = load_repo_and_check_write_access(&state, &auth, &id).await?;
+    let (_repo, git_repo) = load_repo_with_write_access(&state, &auth, &id, false).await?;
 
     let path = path.trim_start_matches('/');
     if path.is_empty() {
         return Err(ApiError::bad_request("Path is required"));
     }
 
-    let branch = resolve_branch(&git_repo, &ref_name)?;
+    let branch = resolve_branch(&git_repo, &ref_name);
 
     let (content, message, sha) = parse_multipart_upload(&mut multipart, path).await?;
 

@@ -38,6 +38,23 @@ pub fn open_repo(path: &Path) -> Result<Repository, GitError> {
     Repository::open_bare(path).map_err(|_| GitError::RepoNotFound)
 }
 
+pub fn open_or_init_repo(path: &Path) -> Result<Repository, GitError> {
+    match Repository::open_bare(path) {
+        Ok(repo) => Ok(repo),
+        Err(_) => {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| GitError::Internal(format!("Failed to create repo directory: {e}")))?;
+            }
+            let repo = Repository::init_bare(path)
+                .map_err(|e| GitError::Internal(format!("Failed to init repo: {e}")))?;
+            repo.set_head("refs/heads/main")
+                .map_err(|e| GitError::Internal(format!("Failed to set HEAD: {e}")))?;
+            Ok(repo)
+        }
+    }
+}
+
 pub fn resolve_ref(repo: &Repository, ref_spec: &str) -> Result<Oid, GitError> {
     let ref_spec = if ref_spec.is_empty() {
         "HEAD"

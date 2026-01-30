@@ -1,6 +1,53 @@
 # Content Mutation API Tests
 
 # ============================================================================
+# Create file in empty repo (orphan commit)
+# ============================================================================
+
+# Create an empty repo
+POST {{base_url}}/api/v1/repos
+Authorization: Bearer {{user_token}}
+Content-Type: application/json
+{
+    "name": "empty-repo-{{test_suffix}}",
+    "namespace": "{{user_ns_name}}"
+}
+HTTP 201
+[Captures]
+empty_repo_id: jsonpath "$.data.id"
+
+# Create first file in empty repo using multi-commit endpoint
+POST {{base_url}}/api/v1/repos/{{empty_repo_id}}/commits
+Authorization: Bearer {{user_token}}
+Content-Type: application/json
+{
+    "message": "Initial commit",
+    "actions": [
+        {
+            "action": "create",
+            "path": "README.md",
+            "content": "# Empty Repo Test"
+        }
+    ]
+}
+HTTP 201
+[Asserts]
+jsonpath "$.data.commit_sha" isString
+jsonpath "$.data.ref_name" == "main"
+
+# Verify the file was created
+GET {{base_url}}/api/v1/repos/{{empty_repo_id}}/blob/main/README.md
+Authorization: Bearer {{user_token}}
+HTTP 200
+[Asserts]
+jsonpath "$.data.content" contains "Empty Repo Test"
+
+# Clean up
+DELETE {{base_url}}/api/v1/repos/{{empty_repo_id}}
+Authorization: Bearer {{user_token}}
+HTTP 204
+
+# ============================================================================
 # PUT Blob - Create new file
 # ============================================================================
 
