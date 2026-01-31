@@ -8,5 +8,9 @@ mod router;
 mod user;
 pub mod validation;
 
-pub use router::AppState;
-pub use router::create_router;
+pub use admin::admin_router;
+pub use content::content_router;
+pub use git::git_router;
+pub use lfs::lfs_router;
+pub use router::{AppState, create_router};
+pub use user::user_router;

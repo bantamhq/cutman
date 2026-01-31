@@ -508,11 +508,11 @@ async fn run_server(config: ServerConfig) -> anyhow::Result<()> {
 
     info!("Admin token available at {}", token_file.display());
 
-    let state = Arc::new(AppState {
-        store: Arc::new(store),
-        data_dir: config.data_dir.clone(),
-        public_base_url: config.public_base_url.clone(),
-    });
+    let state = Arc::new(AppState::new(
+        Arc::new(store),
+        config.data_dir.clone(),
+        config.public_base_url.clone(),
+    ));
 
     let app = create_router(state);
     let addr = config.socket_addr()?;

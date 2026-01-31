@@ -20,6 +20,21 @@ pub struct AppState {
     pub public_base_url: Option<String>,
 }
 
+impl AppState {
+    #[must_use]
+    pub fn new(
+        store: Arc<dyn Store>,
+        data_dir: PathBuf,
+        public_base_url: Option<String>,
+    ) -> Self {
+        Self {
+            store,
+            data_dir,
+            public_base_url,
+        }
+    }
+}
+
 async fn health() -> &'static str {
     "OK"
 }
