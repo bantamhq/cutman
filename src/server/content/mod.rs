@@ -1,6 +1,6 @@
 mod auth;
-mod dto;
-mod git_ops;
+pub mod dto;
+pub mod git_ops;
 mod handlers;
 
 use std::sync::Arc;

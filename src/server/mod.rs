@@ -1,11 +1,11 @@
 mod admin;
-mod content;
+pub mod content;
 pub mod dto;
 mod git;
 mod lfs;
 pub mod response;
 mod router;
-mod user;
+pub mod user;
 pub mod validation;
 
 pub use admin::admin_router;
