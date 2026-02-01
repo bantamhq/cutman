@@ -2794,8 +2794,7 @@ paths:
           required: true
           schema:
             type: string
-          examples:
-            - main...feature-branch
+          example: main...feature-branch
         - name: cursor
           in: query
           description: Pagination cursor for commits
@@ -4331,7 +4330,8 @@ components:
           examples:
             - 1048576
         folder_id:
-          type: string
+          type: integer
+          format: int64
           description: ID of the folder containing this repository
         last_push_at:
           type: string
@@ -4524,8 +4524,9 @@ components:
       type: object
       properties:
         folder_path:
-          type: string
-          nullable: true
+          type:
+            - string
+            - "null"
           description: Folder path to assign the repo to. Set to null or omit to move repo to root.
 
     # ============================================================================
