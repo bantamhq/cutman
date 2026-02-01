@@ -1,8 +1,15 @@
 [package]
 name = "cutman"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 rust-version = "1.85"
+description = "A lightweight, self-hostable git server built for organizing code, experiments, and AI context."
+license = "MIT"
+repository = "https://github.com/bantamhq/cutman"
+homepage = "https://github.com/bantamhq/cutman"
+readme = "README.md"
+keywords = ["git", "server", "self-hosted", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [lib]
 doctest = false
@@ -54,3 +61,8 @@ assert_cmd = "2"
 assert_fs = "1"
 predicates = "3"
 tokio = { version = "1", features = ["test-util", "macros"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
