@@ -5,7 +5,7 @@ info:
     Cutman is a Git repository hosting and management API. It provides endpoints for:
     - Repository management (create, read, update, delete)
     - Git operations (refs, commits, blobs, trees)
-    - Namespace and user administration
+    - Namespace and principal administration
     - Git LFS support
     - Tag and folder organization
   version: 1.0.0
@@ -24,8 +24,8 @@ tags:
     description: Admin namespace management
   - name: admin-tokens
     description: Admin token management
-  - name: admin-users
-    description: Admin user management
+  - name: admin-principals
+    description: Admin principal management
   - name: admin-grants
     description: Admin namespace and repo grant management
   - name: namespaces
@@ -357,15 +357,15 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   # ============================================================================
-  # ADMIN API - Users
+  # ADMIN API - Principals
   # ============================================================================
-  /api/v1/admin/users:
+  /api/v1/admin/principals:
     post:
       tags:
-        - admin-users
-      summary: Create a user.
-      description: Create a new user with an associated namespace.
-      operationId: adminCreateUser
+        - admin-principals
+      summary: Create a principal.
+      description: Create a new principal with an associated namespace.
+      operationId: adminCreatePrincipal
       security:
         - bearerAuth: []
       requestBody:
@@ -373,14 +373,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUserRequest'
+              $ref: '#/components/schemas/CreatePrincipalRequest'
       responses:
         '201':
-          description: User created successfully
+          description: Principal created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResponse-User'
+                $ref: '#/components/schemas/ApiResponse-Principal'
         '400':
           description: Invalid input
           content:
@@ -401,10 +401,10 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     get:
       tags:
-        - admin-users
-      summary: List all users.
-      description: List all users with pagination support.
-      operationId: adminListUsers
+        - admin-principals
+      summary: List all principals.
+      description: List all principals with pagination support.
+      operationId: adminListPrincipals
       security:
         - bearerAuth: []
       parameters:
@@ -416,11 +416,11 @@ paths:
             type: string
       responses:
         '200':
-          description: List of users
+          description: List of principals
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedResponse-User'
+                $ref: '#/components/schemas/PaginatedResponse-Principal'
         '401':
           description: Unauthorized
           content:
@@ -434,29 +434,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/admin/users/{id}:
+  /api/v1/admin/principals/{id}:
     get:
       tags:
-        - admin-users
-      summary: Get a user by ID.
-      description: Retrieve details of a specific user.
-      operationId: adminGetUser
+        - admin-principals
+      summary: Get a principal by ID.
+      description: Retrieve details of a specific principal.
+      operationId: adminGetPrincipal
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
       responses:
         '200':
-          description: User details
+          description: Principal details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResponse-User'
+                $ref: '#/components/schemas/ApiResponse-Principal'
         '401':
           description: Unauthorized
           content:
@@ -464,7 +464,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User not found
+          description: Principal not found
           content:
             application/json:
               schema:
@@ -477,22 +477,22 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     delete:
       tags:
-        - admin-users
-      summary: Delete a user.
-      description: Delete a user and revoke all associated tokens.
-      operationId: adminDeleteUser
+        - admin-principals
+      summary: Delete a principal.
+      description: Delete a principal and revoke all associated tokens.
+      operationId: adminDeletePrincipal
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
       responses:
         '204':
-          description: User deleted successfully
+          description: Principal deleted successfully
         '401':
           description: Unauthorized
           content:
@@ -500,7 +500,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User not found
+          description: Principal not found
           content:
             application/json:
               schema:
@@ -512,19 +512,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/admin/users/{id}/tokens:
+  /api/v1/admin/principals/{id}/tokens:
     get:
       tags:
-        - admin-users
-      summary: List tokens for a user.
-      description: List all tokens associated with a specific user.
-      operationId: adminListUserTokens
+        - admin-principals
+      summary: List tokens for a principal.
+      description: List all tokens associated with a specific principal.
+      operationId: adminListPrincipalTokens
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -542,7 +542,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User not found
+          description: Principal not found
           content:
             application/json:
               schema:
@@ -555,16 +555,16 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
       tags:
-        - admin-users
-      summary: Create a token for a user.
-      description: Create a new authentication token for a specific user.
-      operationId: adminCreateUserToken
+        - admin-principals
+      summary: Create a token for a principal.
+      description: Create a new authentication token for a specific principal.
+      operationId: adminCreatePrincipalToken
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -573,7 +573,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUserTokenRequest'
+              $ref: '#/components/schemas/CreatePrincipalTokenRequest'
       responses:
         '201':
           description: Token created successfully
@@ -594,7 +594,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User not found
+          description: Principal not found
           content:
             application/json:
               schema:
@@ -609,19 +609,19 @@ paths:
   # ============================================================================
   # ADMIN API - Namespace Grants
   # ============================================================================
-  /api/v1/admin/users/{id}/namespace-grants:
+  /api/v1/admin/principals/{id}/namespace-grants:
     post:
       tags:
         - admin-grants
-      summary: Create namespace grant for a user.
-      description: Grant namespace permissions to a user.
+      summary: Create namespace grant for a principal.
+      description: Grant namespace permissions to a principal.
       operationId: adminCreateNamespaceGrant
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -651,7 +651,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User or namespace not found
+          description: Principal or namespace not found
           content:
             application/json:
               schema:
@@ -665,15 +665,15 @@ paths:
     get:
       tags:
         - admin-grants
-      summary: List namespace grants for a user.
-      description: List all namespace grants for a specific user.
+      summary: List namespace grants for a principal.
+      description: List all namespace grants for a specific principal.
       operationId: adminListNamespaceGrants
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -691,7 +691,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User not found
+          description: Principal not found
           content:
             application/json:
               schema:
@@ -703,19 +703,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/admin/users/{id}/namespace-grants/{ns_id}:
+  /api/v1/admin/principals/{id}/namespace-grants/{ns_id}:
     get:
       tags:
         - admin-grants
       summary: Get a namespace grant.
-      description: Retrieve a specific namespace grant for a user.
+      description: Retrieve a specific namespace grant for a principal.
       operationId: adminGetNamespaceGrant
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -739,7 +739,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User or grant not found
+          description: Principal or grant not found
           content:
             application/json:
               schema:
@@ -754,14 +754,14 @@ paths:
       tags:
         - admin-grants
       summary: Delete a namespace grant.
-      description: Remove namespace permissions from a user.
+      description: Remove namespace permissions from a principal.
       operationId: adminDeleteNamespaceGrant
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -781,7 +781,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User or grant not found
+          description: Principal or grant not found
           content:
             application/json:
               schema:
@@ -796,19 +796,19 @@ paths:
   # ============================================================================
   # ADMIN API - Repo Grants
   # ============================================================================
-  /api/v1/admin/users/{id}/repo-grants:
+  /api/v1/admin/principals/{id}/repo-grants:
     post:
       tags:
         - admin-grants
-      summary: Create repo grant for a user.
-      description: Grant repository permissions to a user.
+      summary: Create repo grant for a principal.
+      description: Grant repository permissions to a principal.
       operationId: adminCreateRepoGrant
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -838,7 +838,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User or repo not found
+          description: Principal or repo not found
           content:
             application/json:
               schema:
@@ -852,15 +852,15 @@ paths:
     get:
       tags:
         - admin-grants
-      summary: List repo grants for a user.
-      description: List all repository grants for a specific user.
+      summary: List repo grants for a principal.
+      description: List all repository grants for a specific principal.
       operationId: adminListRepoGrants
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -878,7 +878,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User not found
+          description: Principal not found
           content:
             application/json:
               schema:
@@ -890,19 +890,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/admin/users/{id}/repo-grants/{repo_id}:
+  /api/v1/admin/principals/{id}/repo-grants/{repo_id}:
     get:
       tags:
         - admin-grants
       summary: Get a repo grant.
-      description: Retrieve a specific repository grant for a user.
+      description: Retrieve a specific repository grant for a principal.
       operationId: adminGetRepoGrant
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -926,7 +926,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User or grant not found
+          description: Principal or grant not found
           content:
             application/json:
               schema:
@@ -941,14 +941,14 @@ paths:
       tags:
         - admin-grants
       summary: Delete a repo grant.
-      description: Remove repository permissions from a user.
+      description: Remove repository permissions from a principal.
       operationId: adminDeleteRepoGrant
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
-          description: User ID
+          description: Principal ID
           required: true
           schema:
             type: string
@@ -968,7 +968,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: User or grant not found
+          description: Principal or grant not found
           content:
             application/json:
               schema:
@@ -988,7 +988,7 @@ paths:
       tags:
         - namespaces
       summary: List accessible namespaces.
-      description: List all namespaces the current user has access to.
+      description: List all namespaces the current principal has access to.
       operationId: listNamespaces
       security:
         - bearerAuth: []
@@ -1113,7 +1113,7 @@ paths:
       tags:
         - namespaces
       summary: List grants for a namespace.
-      description: List all user grants for a specific namespace.
+      description: List all principal grants for a specific namespace.
       operationId: listNamespaceGrants
       security:
         - bearerAuth: []
@@ -1126,11 +1126,11 @@ paths:
             type: string
       responses:
         '200':
-          description: List of user grants
+          description: List of principal grants
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResponse-UserGrantResponseArray'
+                $ref: '#/components/schemas/ApiResponse-PrincipalGrantResponseArray'
         '401':
           description: Unauthorized
           content:
@@ -4020,7 +4020,7 @@ components:
           properties:
             is_primary:
               type: boolean
-              description: Whether this is the user's primary namespace
+              description: Whether this is the principal's primary namespace
           required:
             - is_primary
 
@@ -4063,19 +4063,19 @@ components:
           description: Maximum storage in bytes
 
     # ============================================================================
-    # User Schemas
+    # Principal Schemas
     # ============================================================================
-    User:
+    Principal:
       type: object
       properties:
         id:
           type: string
-          description: Unique user identifier
+          description: Unique principal identifier
           examples:
             - usr_01234567890abcdef
         primary_namespace_id:
           type: string
-          description: ID of the user's primary namespace
+          description: ID of the principal's primary namespace
           examples:
             - ns_01234567890abcdef
         created_at:
@@ -4092,12 +4092,12 @@ components:
         - created_at
         - updated_at
 
-    CreateUserRequest:
+    CreatePrincipalRequest:
       type: object
       properties:
         namespace_name:
           type: string
-          description: Name for the user's primary namespace
+          description: Name for the principal's primary namespace
           examples:
             - johndoe
       required:
@@ -4117,9 +4117,9 @@ components:
         is_admin:
           type: boolean
           description: Whether this is an admin token
-        user_id:
+        principal_id:
           type: string
-          description: Associated user ID (null for admin tokens)
+          description: Associated principal ID (null for admin tokens)
         created_at:
           type: string
           format: date-time
@@ -4147,7 +4147,7 @@ components:
         - namespace_grants
         - repo_grants
 
-    CreateUserTokenRequest:
+    CreatePrincipalTokenRequest:
       type: object
       properties:
         expires_in_seconds:
@@ -4272,12 +4272,12 @@ components:
         - allow
         - deny
 
-    UserGrantResponse:
+    PrincipalGrantResponse:
       type: object
       properties:
-        user_id:
+        principal_id:
           type: string
-          description: User ID
+          description: Principal ID
         allow:
           type: array
           items:
@@ -4289,7 +4289,7 @@ components:
             type: string
           description: Denied permissions
       required:
-        - user_id
+        - principal_id
         - allow
         - deny
 
@@ -4540,11 +4540,11 @@ components:
         error:
           type: 'null'
 
-    ApiResponse-User:
+    ApiResponse-Principal:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/User'
+          $ref: '#/components/schemas/Principal'
         error:
           type: 'null'
 
@@ -4620,13 +4620,13 @@ components:
         error:
           type: 'null'
 
-    ApiResponse-UserGrantResponseArray:
+    ApiResponse-PrincipalGrantResponseArray:
       type: object
       properties:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/UserGrantResponse'
+            $ref: '#/components/schemas/PrincipalGrantResponse'
         error:
           type: 'null'
 
@@ -4706,13 +4706,13 @@ components:
         - data
         - has_more
 
-    PaginatedResponse-User:
+    PaginatedResponse-Principal:
       type: object
       properties:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/User'
+            $ref: '#/components/schemas/Principal'
         next_cursor:
           type: string
           description: Cursor for the next page

@@ -12,10 +12,10 @@ use crate::auth::{TokenValidationError, extract_token_from_header, validate_toke
 use crate::server::AppState;
 use crate::server::response::ApiError;
 use crate::server::user::access::check_repo_permission;
-use crate::types::{Permission, Repo, Token, User};
+use crate::types::{Permission, Principal, Repo, Token};
 
 pub struct OptionalAuth {
-    pub user: Option<User>,
+    pub principal: Option<Principal>,
     #[allow(dead_code)]
     pub token: Option<Token>,
 }
@@ -73,7 +73,7 @@ impl FromRequestParts<Arc<AppState>> for OptionalAuth {
             Ok(Some(token)) => token,
             Ok(None) => {
                 return Ok(OptionalAuth {
-                    user: None,
+                    principal: None,
                     token: None,
                 });
             }
@@ -95,7 +95,7 @@ impl FromRequestParts<Arc<AppState>> for OptionalAuth {
         })?;
 
         Ok(OptionalAuth {
-            user: validated.user,
+            principal: validated.principal,
             token: Some(validated.token),
         })
     }
@@ -110,12 +110,12 @@ pub fn check_content_access(
         return Ok(());
     }
 
-    let user = auth
-        .user
+    let principal = auth
+        .principal
         .as_ref()
         .ok_or_else(|| ApiError::unauthorized("Authentication required"))?;
 
-    let has_read = check_repo_permission(state.store.as_ref(), user, repo, Permission::REPO_READ)?;
+    let has_read = check_repo_permission(state.store.as_ref(), principal, repo, Permission::REPO_READ)?;
 
     if !has_read {
         return Err(ApiError::forbidden("Access denied"));

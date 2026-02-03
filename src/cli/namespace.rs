@@ -75,11 +75,11 @@ pub fn run_namespace_remove(
     };
 
     if store
-        .get_user_by_primary_namespace_id(&namespace.id)?
+        .get_principal_by_primary_namespace_id(&namespace.id)?
         .is_some()
     {
         anyhow::bail!(
-            "Cannot delete namespace '{}' - it is a user's primary namespace. Delete the user instead.",
+            "Cannot delete namespace '{}' - it is a principal's primary namespace. Delete the principal instead.",
             namespace.name
         );
     }

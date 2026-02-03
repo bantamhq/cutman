@@ -7,9 +7,9 @@ use serde_json::Value;
 
 struct TestData {
     namespace_id: String,
-    user_id: String,
-    user_ns_id: String,
-    user_token: String,
+    principal_id: String,
+    principal_ns_id: String,
+    principal_token: String,
     token_id: String,
     repo_id: String,
     commit_sha: String,
@@ -22,12 +22,12 @@ impl TestData {
         let lines = [
             format!("base_url={}", base_url),
             format!("admin_token={}", admin_token),
-            format!("user_token={}", self.user_token),
+            format!("principal_token={}", self.principal_token),
             format!("namespace_id={}", self.namespace_id),
             "namespace_name=test-namespace".to_string(),
-            format!("user_id={}", self.user_id),
-            format!("user_ns_id={}", self.user_ns_id),
-            "user_ns_name=test-user".to_string(),
+            format!("principal_id={}", self.principal_id),
+            format!("principal_ns_id={}", self.principal_ns_id),
+            "principal_ns_name=test-principal".to_string(),
             format!("repo_id={}", self.repo_id),
             "repo_name=test-repo".to_string(),
             format!("token_id={}", self.token_id),
@@ -62,25 +62,25 @@ async fn create_test_data(
         .to_string();
 
     let resp: Value = client
-        .post(format!("{}/api/v1/admin/users", base_url))
+        .post(format!("{}/api/v1/admin/principals", base_url))
         .bearer_auth(admin_token)
-        .json(&serde_json::json!({"namespace_name": "test-user"}))
+        .json(&serde_json::json!({"namespace_name": "test-principal"}))
         .send()
         .await
-        .expect("create user")
+        .expect("create principal")
         .json()
         .await
-        .expect("parse user response");
-    let user_id = resp["data"]["id"].as_str().expect("user id").to_string();
-    let user_ns_id = resp["data"]["primary_namespace_id"]
+        .expect("parse principal response");
+    let principal_id = resp["data"]["id"].as_str().expect("principal id").to_string();
+    let principal_ns_id = resp["data"]["primary_namespace_id"]
         .as_str()
-        .expect("user ns id")
+        .expect("principal ns id")
         .to_string();
 
     client
         .post(format!(
-            "{}/api/v1/admin/users/{}/namespace-grants",
-            base_url, user_id
+            "{}/api/v1/admin/principals/{}/namespace-grants",
+            base_url, principal_id
         ))
         .bearer_auth(admin_token)
         .json(&serde_json::json!({
@@ -93,20 +93,20 @@ async fn create_test_data(
 
     let resp: Value = client
         .post(format!(
-            "{}/api/v1/admin/users/{}/tokens",
-            base_url, user_id
+            "{}/api/v1/admin/principals/{}/tokens",
+            base_url, principal_id
         ))
         .bearer_auth(admin_token)
         .json(&serde_json::json!({"description": "Test token"}))
         .send()
         .await
-        .expect("create user token")
+        .expect("create principal token")
         .json()
         .await
         .expect("parse token response");
-    let user_token = resp["data"]["token"]
+    let principal_token = resp["data"]["token"]
         .as_str()
-        .expect("user token")
+        .expect("principal token")
         .to_string();
     let token_id = resp["data"]["metadata"]["id"]
         .as_str()
@@ -115,11 +115,11 @@ async fn create_test_data(
 
     let resp: Value = client
         .post(format!("{}/api/v1/repos", base_url))
-        .bearer_auth(&user_token)
+        .bearer_auth(&principal_token)
         .json(&serde_json::json!({
             "name": "test-repo",
             "description": "Test repository",
-            "namespace": "test-user"
+            "namespace": "test-principal"
         }))
         .send()
         .await
@@ -129,16 +129,16 @@ async fn create_test_data(
         .expect("parse repo response");
     let repo_id = resp["data"]["id"].as_str().expect("repo id").to_string();
 
-    let commit_sha = create_test_git_content(data_dir, &user_ns_id);
+    let commit_sha = create_test_git_content(data_dir, &principal_ns_id);
     let git_auth =
-        base64::engine::general_purpose::STANDARD.encode(format!("x-token:{}", user_token));
+        base64::engine::general_purpose::STANDARD.encode(format!("x-token:{}", principal_token));
     let test_suffix = chrono::Utc::now().timestamp().to_string();
 
     TestData {
         namespace_id,
-        user_id,
-        user_ns_id,
-        user_token,
+        principal_id,
+        principal_ns_id,
+        principal_token,
         token_id,
         repo_id,
         commit_sha,
@@ -232,7 +232,7 @@ async fn api_hurl_tests() {
         "admin/grants.hurl",
         "admin/namespaces.hurl",
         "admin/tokens.hurl",
-        "admin/users.hurl",
+        "admin/principals.hurl",
         "user/namespaces.hurl",
         "user/repos.hurl",
         "user/repo_tags.hurl",

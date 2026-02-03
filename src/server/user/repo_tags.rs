@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::auth::RequireUser;
+use crate::auth::RequirePrincipal;
 use crate::server::AppState;
 use crate::server::dto::RepoTagsRequest;
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
@@ -37,11 +37,11 @@ fn validate_tags_for_repo(
 }
 
 pub async fn list_repo_tags(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -49,7 +49,7 @@ pub async fn list_repo_tags(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_READ)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_READ)?;
 
     let tags = store
         .list_repo_tags(&repo.id)
@@ -59,12 +59,12 @@ pub async fn list_repo_tags(
 }
 
 pub async fn add_repo_tags(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<RepoTagsRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -72,7 +72,7 @@ pub async fn add_repo_tags(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_WRITE)?;
     validate_tags_for_repo(store, &repo, &req.tag_ids)?;
 
     for tag_id in &req.tag_ids {
@@ -89,12 +89,12 @@ pub async fn add_repo_tags(
 }
 
 pub async fn set_repo_tags(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<RepoTagsRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -102,7 +102,7 @@ pub async fn set_repo_tags(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_WRITE)?;
     validate_tags_for_repo(store, &repo, &req.tag_ids)?;
 
     store
@@ -117,11 +117,11 @@ pub async fn set_repo_tags(
 }
 
 pub async fn remove_repo_tag(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path((id, tag_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -129,7 +129,7 @@ pub async fn remove_repo_tag(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_WRITE)?;
 
     store
         .get_tag_by_id(&tag_id)

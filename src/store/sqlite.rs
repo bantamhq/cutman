@@ -28,6 +28,12 @@ impl SqliteStore {
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// Returns a guard to the underlying database connection.
+    /// This allows consuming applications to execute custom SQL.
+    pub fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn()
+    }
 }
 
 fn parse_datetime(s: &str) -> DateTime<Utc> {
@@ -49,7 +55,15 @@ fn format_datetime(dt: &DateTime<Utc>) -> String {
 
 impl Store for SqliteStore {
     fn initialize(&self) -> Result<()> {
-        self.conn().execute_batch(SCHEMA)?;
+        self.initialize_with_extensions(&[])
+    }
+
+    fn initialize_with_extensions(&self, extensions: &[&str]) -> Result<()> {
+        let conn = self.conn();
+        conn.execute_batch(SCHEMA)?;
+        for extension in extensions {
+            conn.execute_batch(extension)?;
+        }
         Ok(())
     }
 
@@ -154,29 +168,29 @@ impl Store for SqliteStore {
         Ok(rows > 0)
     }
 
-    // User operations
+    // Principal operations
 
-    fn create_user(&self, user: &User) -> Result<()> {
+    fn create_principal(&self, principal: &Principal) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO users (id, primary_namespace_id, created_at, updated_at)
+            "INSERT INTO principals (id, primary_namespace_id, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4)",
             params![
-                user.id,
-                user.primary_namespace_id,
-                format_datetime(&user.created_at),
-                format_datetime(&user.updated_at),
+                principal.id,
+                principal.primary_namespace_id,
+                format_datetime(&principal.created_at),
+                format_datetime(&principal.updated_at),
             ],
         )?;
         Ok(())
     }
 
-    fn get_user(&self, id: &str) -> Result<Option<User>> {
+    fn get_principal(&self, id: &str) -> Result<Option<Principal>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, primary_namespace_id, created_at, updated_at FROM users WHERE id = ?1",
+            "SELECT id, primary_namespace_id, created_at, updated_at FROM principals WHERE id = ?1",
             params![id],
             |row| {
-                Ok(User {
+                Ok(Principal {
                     id: row.get(0)?,
                     primary_namespace_id: row.get(1)?,
                     created_at: parse_datetime(&row.get::<_, String>(2)?),
@@ -188,14 +202,14 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn get_user_by_primary_namespace_id(&self, namespace_id: &str) -> Result<Option<User>> {
+    fn get_principal_by_primary_namespace_id(&self, namespace_id: &str) -> Result<Option<Principal>> {
         let conn = self.conn();
         conn.query_row(
             "SELECT id, primary_namespace_id, created_at, updated_at
-             FROM users WHERE primary_namespace_id = ?1",
+             FROM principals WHERE primary_namespace_id = ?1",
             params![namespace_id],
             |row| {
-                Ok(User {
+                Ok(Principal {
                     id: row.get(0)?,
                     primary_namespace_id: row.get(1)?,
                     created_at: parse_datetime(&row.get::<_, String>(2)?),
@@ -207,15 +221,15 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn list_users(&self, cursor: &str, limit: i32) -> Result<Vec<User>> {
+    fn list_principals(&self, cursor: &str, limit: i32) -> Result<Vec<Principal>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, primary_namespace_id, created_at, updated_at
-             FROM users WHERE id > ?1 ORDER BY id LIMIT ?2",
+             FROM principals WHERE id > ?1 ORDER BY id LIMIT ?2",
         )?;
 
         let rows = stmt.query_map(params![cursor, limit], |row| {
-            Ok(User {
+            Ok(Principal {
                 id: row.get(0)?,
                 primary_namespace_id: row.get(1)?,
                 created_at: parse_datetime(&row.get::<_, String>(2)?),
@@ -227,13 +241,13 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn update_user(&self, user: &User) -> Result<()> {
+    fn update_principal(&self, principal: &Principal) -> Result<()> {
         let rows = self.conn().execute(
-            "UPDATE users SET primary_namespace_id = ?1, updated_at = ?2 WHERE id = ?3",
+            "UPDATE principals SET primary_namespace_id = ?1, updated_at = ?2 WHERE id = ?3",
             params![
-                user.primary_namespace_id,
-                format_datetime(&user.updated_at),
-                user.id
+                principal.primary_namespace_id,
+                format_datetime(&principal.updated_at),
+                principal.id
             ],
         )?;
 
@@ -243,10 +257,10 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn delete_user(&self, id: &str) -> Result<bool> {
+    fn delete_principal(&self, id: &str) -> Result<bool> {
         let rows = self
             .conn()
-            .execute("DELETE FROM users WHERE id = ?1", params![id])?;
+            .execute("DELETE FROM principals WHERE id = ?1", params![id])?;
         Ok(rows > 0)
     }
 
@@ -254,14 +268,14 @@ impl Store for SqliteStore {
 
     fn create_token(&self, token: &Token) -> Result<()> {
         let result = self.conn().execute(
-            "INSERT INTO tokens (id, token_hash, token_lookup, is_admin, user_id, created_at, expires_at)
+            "INSERT INTO tokens (id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 token.id,
                 token.token_hash,
                 token.token_lookup,
                 token.is_admin,
-                token.user_id,
+                token.principal_id,
                 format_datetime(&token.created_at),
                 token.expires_at.as_ref().map(format_datetime),
             ],
@@ -281,7 +295,7 @@ impl Store for SqliteStore {
     fn get_token_by_id(&self, id: &str) -> Result<Option<Token>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, token_hash, token_lookup, is_admin, user_id, created_at, expires_at, last_used_at
+            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
              FROM tokens WHERE id = ?1",
             params![id],
             |row| {
@@ -290,7 +304,7 @@ impl Store for SqliteStore {
                     token_hash: row.get(1)?,
                     token_lookup: row.get(2)?,
                     is_admin: row.get(3)?,
-                    user_id: row.get(4)?,
+                    principal_id: row.get(4)?,
                     created_at: parse_datetime(&row.get::<_, String>(5)?),
                     expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
                     last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
@@ -304,7 +318,7 @@ impl Store for SqliteStore {
     fn get_token_by_lookup(&self, lookup: &str) -> Result<Option<Token>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, token_hash, token_lookup, is_admin, user_id, created_at, expires_at, last_used_at
+            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
              FROM tokens WHERE token_lookup = ?1",
             params![lookup],
             |row| {
@@ -313,7 +327,7 @@ impl Store for SqliteStore {
                     token_hash: row.get(1)?,
                     token_lookup: row.get(2)?,
                     is_admin: row.get(3)?,
-                    user_id: row.get(4)?,
+                    principal_id: row.get(4)?,
                     created_at: parse_datetime(&row.get::<_, String>(5)?),
                     expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
                     last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
@@ -327,7 +341,7 @@ impl Store for SqliteStore {
     fn list_tokens(&self, cursor: &str, limit: i32) -> Result<Vec<Token>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT id, token_hash, token_lookup, is_admin, user_id, created_at, expires_at, last_used_at
+            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
              FROM tokens WHERE id > ?1 ORDER BY id LIMIT ?2",
         )?;
 
@@ -337,7 +351,7 @@ impl Store for SqliteStore {
                 token_hash: row.get(1)?,
                 token_lookup: row.get(2)?,
                 is_admin: row.get(3)?,
-                user_id: row.get(4)?,
+                principal_id: row.get(4)?,
                 created_at: parse_datetime(&row.get::<_, String>(5)?),
                 expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
                 last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
@@ -348,20 +362,20 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn list_user_tokens(&self, user_id: &str) -> Result<Vec<Token>> {
+    fn list_principal_tokens(&self, principal_id: &str) -> Result<Vec<Token>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT id, token_hash, token_lookup, is_admin, user_id, created_at, expires_at, last_used_at
-             FROM tokens WHERE user_id = ?1 ORDER BY created_at DESC",
+            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
+             FROM tokens WHERE principal_id = ?1 ORDER BY created_at DESC",
         )?;
 
-        let rows = stmt.query_map(params![user_id], |row| {
+        let rows = stmt.query_map(params![principal_id], |row| {
             Ok(Token {
                 id: row.get(0)?,
                 token_hash: row.get(1)?,
                 token_lookup: row.get(2)?,
                 is_admin: row.get(3)?,
-                user_id: row.get(4)?,
+                principal_id: row.get(4)?,
                 created_at: parse_datetime(&row.get::<_, String>(5)?),
                 expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
                 last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
@@ -1026,22 +1040,22 @@ impl Store for SqliteStore {
     // Namespace grant operations
 
     fn upsert_namespace_grant(&self, grant: &NamespaceGrant) -> Result<()> {
-        // Check if the namespace belongs to another user as their primary
-        if let Some(owner) = self.get_user_by_primary_namespace_id(&grant.namespace_id)? {
-            if owner.id != grant.user_id {
+        // Check if the namespace belongs to another principal as their primary
+        if let Some(owner) = self.get_principal_by_primary_namespace_id(&grant.namespace_id)? {
+            if owner.id != grant.principal_id {
                 return Err(Error::PrimaryNamespaceGrant);
             }
         }
 
         self.conn().execute(
-            "INSERT INTO user_namespace_grants (user_id, namespace_id, allow_bits, deny_bits, created_at, updated_at)
+            "INSERT INTO principal_namespace_grants (principal_id, namespace_id, allow_bits, deny_bits, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT (user_id, namespace_id) DO UPDATE SET
+             ON CONFLICT (principal_id, namespace_id) DO UPDATE SET
                 allow_bits = excluded.allow_bits,
                 deny_bits = excluded.deny_bits,
                 updated_at = excluded.updated_at",
             params![
-                grant.user_id,
+                grant.principal_id,
                 grant.namespace_id,
                 i64::from(grant.allow_bits),
                 i64::from(grant.deny_bits),
@@ -1052,27 +1066,27 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn delete_namespace_grant(&self, user_id: &str, namespace_id: &str) -> Result<bool> {
+    fn delete_namespace_grant(&self, principal_id: &str, namespace_id: &str) -> Result<bool> {
         let rows = self.conn().execute(
-            "DELETE FROM user_namespace_grants WHERE user_id = ?1 AND namespace_id = ?2",
-            params![user_id, namespace_id],
+            "DELETE FROM principal_namespace_grants WHERE principal_id = ?1 AND namespace_id = ?2",
+            params![principal_id, namespace_id],
         )?;
         Ok(rows > 0)
     }
 
     fn get_namespace_grant(
         &self,
-        user_id: &str,
+        principal_id: &str,
         namespace_id: &str,
     ) -> Result<Option<NamespaceGrant>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT user_id, namespace_id, allow_bits, deny_bits, created_at, updated_at
-             FROM user_namespace_grants WHERE user_id = ?1 AND namespace_id = ?2",
-            params![user_id, namespace_id],
+            "SELECT principal_id, namespace_id, allow_bits, deny_bits, created_at, updated_at
+             FROM principal_namespace_grants WHERE principal_id = ?1 AND namespace_id = ?2",
+            params![principal_id, namespace_id],
             |row| {
                 Ok(NamespaceGrant {
-                    user_id: row.get(0)?,
+                    principal_id: row.get(0)?,
                     namespace_id: row.get(1)?,
                     allow_bits: Permission::from(row.get::<_, i64>(2)?),
                     deny_bits: Permission::from(row.get::<_, i64>(3)?),
@@ -1085,16 +1099,16 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn list_user_namespace_grants(&self, user_id: &str) -> Result<Vec<NamespaceGrant>> {
+    fn list_principal_namespace_grants(&self, principal_id: &str) -> Result<Vec<NamespaceGrant>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT user_id, namespace_id, allow_bits, deny_bits, created_at, updated_at
-             FROM user_namespace_grants WHERE user_id = ?1 ORDER BY namespace_id",
+            "SELECT principal_id, namespace_id, allow_bits, deny_bits, created_at, updated_at
+             FROM principal_namespace_grants WHERE principal_id = ?1 ORDER BY namespace_id",
         )?;
 
-        let rows = stmt.query_map(params![user_id], |row| {
+        let rows = stmt.query_map(params![principal_id], |row| {
             Ok(NamespaceGrant {
-                user_id: row.get(0)?,
+                principal_id: row.get(0)?,
                 namespace_id: row.get(1)?,
                 allow_bits: Permission::from(row.get::<_, i64>(2)?),
                 deny_bits: Permission::from(row.get::<_, i64>(3)?),
@@ -1113,13 +1127,13 @@ impl Store for SqliteStore {
     ) -> Result<Vec<NamespaceGrant>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT user_id, namespace_id, allow_bits, deny_bits, created_at, updated_at
-             FROM user_namespace_grants WHERE namespace_id = ?1 ORDER BY user_id",
+            "SELECT principal_id, namespace_id, allow_bits, deny_bits, created_at, updated_at
+             FROM principal_namespace_grants WHERE namespace_id = ?1 ORDER BY principal_id",
         )?;
 
         let rows = stmt.query_map(params![namespace_id], |row| {
             Ok(NamespaceGrant {
-                user_id: row.get(0)?,
+                principal_id: row.get(0)?,
                 namespace_id: row.get(1)?,
                 allow_bits: Permission::from(row.get::<_, i64>(2)?),
                 deny_bits: Permission::from(row.get::<_, i64>(3)?),
@@ -1132,10 +1146,10 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn count_namespace_users(&self, namespace_id: &str) -> Result<i32> {
+    fn count_namespace_principals(&self, namespace_id: &str) -> Result<i32> {
         let conn = self.conn();
         let count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM user_namespace_grants WHERE namespace_id = ?1",
+            "SELECT COUNT(*) FROM principal_namespace_grants WHERE namespace_id = ?1",
             params![namespace_id],
             |row| row.get(0),
         )?;
@@ -1146,14 +1160,14 @@ impl Store for SqliteStore {
 
     fn upsert_repo_grant(&self, grant: &RepoGrant) -> Result<()> {
         self.conn().execute(
-            "INSERT INTO user_repo_grants (user_id, repo_id, allow_bits, deny_bits, created_at, updated_at)
+            "INSERT INTO principal_repo_grants (principal_id, repo_id, allow_bits, deny_bits, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT (user_id, repo_id) DO UPDATE SET
+             ON CONFLICT (principal_id, repo_id) DO UPDATE SET
                 allow_bits = excluded.allow_bits,
                 deny_bits = excluded.deny_bits,
                 updated_at = excluded.updated_at",
             params![
-                grant.user_id,
+                grant.principal_id,
                 grant.repo_id,
                 i64::from(grant.allow_bits),
                 i64::from(grant.deny_bits),
@@ -1164,23 +1178,23 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn delete_repo_grant(&self, user_id: &str, repo_id: &str) -> Result<bool> {
+    fn delete_repo_grant(&self, principal_id: &str, repo_id: &str) -> Result<bool> {
         let rows = self.conn().execute(
-            "DELETE FROM user_repo_grants WHERE user_id = ?1 AND repo_id = ?2",
-            params![user_id, repo_id],
+            "DELETE FROM principal_repo_grants WHERE principal_id = ?1 AND repo_id = ?2",
+            params![principal_id, repo_id],
         )?;
         Ok(rows > 0)
     }
 
-    fn get_repo_grant(&self, user_id: &str, repo_id: &str) -> Result<Option<RepoGrant>> {
+    fn get_repo_grant(&self, principal_id: &str, repo_id: &str) -> Result<Option<RepoGrant>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT user_id, repo_id, allow_bits, deny_bits, created_at, updated_at
-             FROM user_repo_grants WHERE user_id = ?1 AND repo_id = ?2",
-            params![user_id, repo_id],
+            "SELECT principal_id, repo_id, allow_bits, deny_bits, created_at, updated_at
+             FROM principal_repo_grants WHERE principal_id = ?1 AND repo_id = ?2",
+            params![principal_id, repo_id],
             |row| {
                 Ok(RepoGrant {
-                    user_id: row.get(0)?,
+                    principal_id: row.get(0)?,
                     repo_id: row.get(1)?,
                     allow_bits: Permission::from(row.get::<_, i64>(2)?),
                     deny_bits: Permission::from(row.get::<_, i64>(3)?),
@@ -1193,16 +1207,16 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn list_user_repo_grants(&self, user_id: &str) -> Result<Vec<RepoGrant>> {
+    fn list_principal_repo_grants(&self, principal_id: &str) -> Result<Vec<RepoGrant>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT user_id, repo_id, allow_bits, deny_bits, created_at, updated_at
-             FROM user_repo_grants WHERE user_id = ?1 ORDER BY repo_id",
+            "SELECT principal_id, repo_id, allow_bits, deny_bits, created_at, updated_at
+             FROM principal_repo_grants WHERE principal_id = ?1 ORDER BY repo_id",
         )?;
 
-        let rows = stmt.query_map(params![user_id], |row| {
+        let rows = stmt.query_map(params![principal_id], |row| {
             Ok(RepoGrant {
-                user_id: row.get(0)?,
+                principal_id: row.get(0)?,
                 repo_id: row.get(1)?,
                 allow_bits: Permission::from(row.get::<_, i64>(2)?),
                 deny_bits: Permission::from(row.get::<_, i64>(3)?),
@@ -1215,17 +1229,17 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn list_user_repos_with_grants(&self, user_id: &str, namespace_id: &str) -> Result<Vec<Repo>> {
+    fn list_principal_repos_with_grants(&self, principal_id: &str, namespace_id: &str) -> Result<Vec<Repo>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
              FROM repos r
-             JOIN user_repo_grants g ON r.id = g.repo_id
-             WHERE g.user_id = ?1 AND r.namespace_id = ?2
+             JOIN principal_repo_grants g ON r.id = g.repo_id
+             WHERE g.principal_id = ?1 AND r.namespace_id = ?2
              ORDER BY r.name",
         )?;
 
-        let rows = stmt.query_map(params![user_id, namespace_id], |row| {
+        let rows = stmt.query_map(params![principal_id, namespace_id], |row| {
             Ok(Repo {
                 id: row.get(0)?,
                 namespace_id: row.get(1)?,
@@ -1244,13 +1258,13 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn has_repo_grants_in_namespace(&self, user_id: &str, namespace_id: &str) -> Result<bool> {
+    fn has_repo_grants_in_namespace(&self, principal_id: &str, namespace_id: &str) -> Result<bool> {
         let conn = self.conn();
         let count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM user_repo_grants g
+            "SELECT COUNT(*) FROM principal_repo_grants g
              JOIN repos r ON r.id = g.repo_id
-             WHERE g.user_id = ?1 AND r.namespace_id = ?2",
-            params![user_id, namespace_id],
+             WHERE g.principal_id = ?1 AND r.namespace_id = ?2",
+            params![principal_id, namespace_id],
             |row| row.get(0),
         )?;
         Ok(count > 0)
@@ -1366,14 +1380,14 @@ mod tests {
             .unwrap();
 
         assert!(tables.contains(&"namespaces".to_string()));
-        assert!(tables.contains(&"users".to_string()));
+        assert!(tables.contains(&"principals".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
         assert!(tables.contains(&"repos".to_string()));
         assert!(tables.contains(&"tags".to_string()));
         assert!(tables.contains(&"repo_tags".to_string()));
         assert!(tables.contains(&"folders".to_string()));
-        assert!(tables.contains(&"user_namespace_grants".to_string()));
-        assert!(tables.contains(&"user_repo_grants".to_string()));
+        assert!(tables.contains(&"principal_namespace_grants".to_string()));
+        assert!(tables.contains(&"principal_repo_grants".to_string()));
         assert!(tables.contains(&"lfs_objects".to_string()));
     }
 
@@ -1412,7 +1426,7 @@ mod tests {
     }
 
     #[test]
-    fn test_user_crud() {
+    fn test_principal_crud() {
         let temp = TempDir::new().unwrap();
         let store = SqliteStore::new(temp.path().join("test.db")).unwrap();
         store.initialize().unwrap();
@@ -1427,22 +1441,22 @@ mod tests {
         };
         store.create_namespace(&ns).unwrap();
 
-        let user = User {
-            id: "user-1".to_string(),
+        let principal = Principal {
+            id: "principal-1".to_string(),
             primary_namespace_id: "ns-1".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        store.create_user(&user).unwrap();
+        store.create_principal(&principal).unwrap();
 
-        let fetched = store.get_user("user-1").unwrap().unwrap();
+        let fetched = store.get_principal("principal-1").unwrap().unwrap();
         assert_eq!(fetched.primary_namespace_id, "ns-1");
 
         let by_ns = store
-            .get_user_by_primary_namespace_id("ns-1")
+            .get_principal_by_primary_namespace_id("ns-1")
             .unwrap()
             .unwrap();
-        assert_eq!(by_ns.id, "user-1");
+        assert_eq!(by_ns.id, "principal-1");
     }
 
     #[test]
@@ -1456,7 +1470,7 @@ mod tests {
             token_hash: "hash1".to_string(),
             token_lookup: "lookup123".to_string(),
             is_admin: true,
-            user_id: None,
+            principal_id: None,
             created_at: Utc::now(),
             expires_at: None,
             last_used_at: None,
@@ -1468,7 +1482,7 @@ mod tests {
             token_hash: "hash2".to_string(),
             token_lookup: "lookup123".to_string(), // Same lookup
             is_admin: true,
-            user_id: None,
+            principal_id: None,
             created_at: Utc::now(),
             expires_at: None,
             last_used_at: None,

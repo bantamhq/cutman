@@ -11,24 +11,23 @@ use uuid::Uuid;
 use cutman::auth::TokenGenerator;
 use cutman::cli::{
     AdminCommands, AuthCommands, CredentialCommands, FolderCommands, NamespaceCommands,
-    PermissionCommands, RepoCommands, TagCommands, TokenCommands, UserCommands,
+    PermissionCommands, PrincipalCommands, RepoCommands, TagCommands, TokenCommands,
     print_credential_help, run_auth_login, run_auth_logout, run_credential_erase,
     run_credential_get, run_credential_store, run_folder_create, run_folder_delete,
     run_folder_list, run_folder_move, run_info, run_namespace_add, run_namespace_remove, run_new,
     run_permission_grant, run_permission_repo_grant, run_permission_repo_revoke,
-    run_permission_revoke, run_repo_clone, run_repo_delete, run_repo_move, run_repo_tag,
-    run_tag_create, run_tag_delete, run_token_create, run_token_revoke, run_user_add,
-    run_user_remove,
+    run_permission_revoke, run_principal_add, run_principal_remove, run_repo_clone, run_repo_delete,
+    run_repo_move, run_repo_tag, run_tag_create, run_tag_delete, run_token_create, run_token_revoke,
 };
 use cutman::config::{ServerConfig, ServerConfigOverrides};
 use cutman::server::{AppState, create_router};
 use cutman::store::{SqliteStore, Store};
-use cutman::types::{Namespace, Token, User};
+use cutman::types::{Namespace, Principal, Token};
 
 fn create_token(
     generator: &TokenGenerator,
     is_admin: bool,
-    user_id: Option<String>,
+    principal_id: Option<String>,
 ) -> anyhow::Result<(Token, String)> {
     let (raw_token, lookup, hash) = generator.generate()?;
     let token = Token {
@@ -36,7 +35,7 @@ fn create_token(
         token_hash: hash,
         token_lookup: lookup,
         is_admin,
-        user_id,
+        principal_id,
         created_at: Utc::now(),
         expires_at: None,
         last_used_at: None,
@@ -170,21 +169,21 @@ fn run_init(data_dir: String, non_interactive: bool) -> anyhow::Result<()> {
     println!();
 
     if !non_interactive {
-        create_default_user_prompt(&store, &generator)?;
+        create_default_principal_prompt(&store, &generator)?;
     }
 
     Ok(())
 }
 
-fn create_default_user_prompt(
+fn create_default_principal_prompt(
     store: &SqliteStore,
     generator: &TokenGenerator,
 ) -> anyhow::Result<()> {
-    let create_user = inquire::Confirm::new("Would you like to create a default user?")
+    let create_principal = inquire::Confirm::new("Would you like to create a default principal?")
         .with_default(false)
         .prompt()?;
 
-    if !create_user {
+    if !create_principal {
         return Ok(());
     }
 
@@ -202,7 +201,7 @@ fn create_default_user_prompt(
 
     let now = Utc::now();
     let namespace_id = Uuid::new_v4().to_string();
-    let user_id = Uuid::new_v4().to_string();
+    let principal_id = Uuid::new_v4().to_string();
 
     let namespace = Namespace {
         id: namespace_id.clone(),
@@ -213,22 +212,22 @@ fn create_default_user_prompt(
         external_id: None,
     };
 
-    let user = User {
-        id: user_id.clone(),
+    let principal = Principal {
+        id: principal_id.clone(),
         primary_namespace_id: namespace_id,
         created_at: now,
         updated_at: now,
     };
 
     store.create_namespace(&namespace)?;
-    store.create_user(&user)?;
+    store.create_principal(&principal)?;
 
-    let (user_token, raw_token) = create_token(generator, false, Some(user_id))?;
-    store.create_token(&user_token)?;
+    let (principal_token, raw_token) = create_token(generator, false, Some(principal_id))?;
+    store.create_token(&principal_token)?;
 
     println!();
     println!("========================================");
-    println!("Created user '{username}' with token:");
+    println!("Created principal '{username}' with token:");
     println!();
     println!("  {raw_token}");
     println!();
@@ -253,32 +252,32 @@ fn main() -> anyhow::Result<()> {
             } => {
                 run_init(data_dir, non_interactive)?;
             }
-            AdminCommands::User { command } => match command {
-                UserCommands::Add {
+            AdminCommands::Principal { command } => match command {
+                PrincipalCommands::Add {
                     data_dir,
                     username,
                     create_token,
                     non_interactive,
                 } => {
-                    run_user_add(data_dir, username, create_token, non_interactive)?;
+                    run_principal_add(data_dir, username, create_token, non_interactive)?;
                 }
-                UserCommands::Remove {
+                PrincipalCommands::Remove {
                     data_dir,
-                    user_id,
+                    principal_id,
                     non_interactive,
                     yes,
                 } => {
-                    run_user_remove(data_dir, user_id, non_interactive, yes)?;
+                    run_principal_remove(data_dir, principal_id, non_interactive, yes)?;
                 }
             },
             AdminCommands::Token { command } => match command {
                 TokenCommands::Create {
                     data_dir,
-                    user_id,
+                    principal_id,
                     expires_days,
                     non_interactive,
                 } => {
-                    run_token_create(data_dir, user_id, expires_days, non_interactive)?;
+                    run_token_create(data_dir, principal_id, expires_days, non_interactive)?;
                 }
                 TokenCommands::Revoke {
                     data_dir,
@@ -309,14 +308,14 @@ fn main() -> anyhow::Result<()> {
             AdminCommands::Permission { command } => match command {
                 PermissionCommands::Grant {
                     data_dir,
-                    user_id,
+                    principal_id,
                     namespace_id,
                     permissions,
                     non_interactive,
                 } => {
                     run_permission_grant(
                         data_dir,
-                        user_id,
+                        principal_id,
                         namespace_id,
                         permissions,
                         non_interactive,
@@ -324,23 +323,23 @@ fn main() -> anyhow::Result<()> {
                 }
                 PermissionCommands::Revoke {
                     data_dir,
-                    user_id,
+                    principal_id,
                     namespace_id,
                     non_interactive,
                     yes,
                 } => {
-                    run_permission_revoke(data_dir, user_id, namespace_id, non_interactive, yes)?;
+                    run_permission_revoke(data_dir, principal_id, namespace_id, non_interactive, yes)?;
                 }
                 PermissionCommands::RepoGrant {
                     data_dir,
-                    user_id,
+                    principal_id,
                     repo_id,
                     permissions,
                     non_interactive,
                 } => {
                     run_permission_repo_grant(
                         data_dir,
-                        user_id,
+                        principal_id,
                         repo_id,
                         permissions,
                         non_interactive,
@@ -348,12 +347,12 @@ fn main() -> anyhow::Result<()> {
                 }
                 PermissionCommands::RepoRevoke {
                     data_dir,
-                    user_id,
+                    principal_id,
                     repo_id,
                     non_interactive,
                     yes,
                 } => {
-                    run_permission_repo_revoke(data_dir, user_id, repo_id, non_interactive, yes)?;
+                    run_permission_repo_revoke(data_dir, principal_id, repo_id, non_interactive, yes)?;
                 }
             },
             AdminCommands::Info { data_dir, json } => {

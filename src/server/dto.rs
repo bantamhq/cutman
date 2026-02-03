@@ -12,12 +12,12 @@ pub struct CreateNamespaceRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CreateUserRequest {
+pub struct CreatePrincipalRequest {
     pub namespace_name: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub struct CreateUserTokenRequest {
+pub struct CreatePrincipalTokenRequest {
     #[serde(default)]
     pub expires_in_seconds: Option<i64>,
 }
@@ -59,7 +59,7 @@ pub struct TokenResponse {
     pub id: String,
     pub is_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_id: Option<String>,
+    pub principal_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -188,8 +188,8 @@ pub struct SetRepoFolderRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub struct UserGrantResponse {
-    pub user_id: String,
+pub struct PrincipalGrantResponse {
+    pub principal_id: String,
     pub allow: Vec<&'static str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub deny: Vec<&'static str>,

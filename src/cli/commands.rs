@@ -13,10 +13,10 @@ pub enum AdminCommands {
         non_interactive: bool,
     },
 
-    /// Manage users
-    User {
+    /// Manage principals
+    Principal {
         #[command(subcommand)]
-        command: UserCommands,
+        command: PrincipalCommands,
     },
 
     /// Manage access tokens
@@ -50,18 +50,18 @@ pub enum AdminCommands {
 }
 
 #[derive(Subcommand)]
-pub enum UserCommands {
-    /// Add a new user with namespace and optional token
+pub enum PrincipalCommands {
+    /// Add a new principal with namespace and optional token
     Add {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// Username for the new user
+        /// Username for the new principal
         #[arg(long)]
         username: Option<String>,
 
-        /// Create a token for the new user
+        /// Create a token for the new principal
         #[arg(long)]
         create_token: bool,
 
@@ -70,17 +70,17 @@ pub enum UserCommands {
         non_interactive: bool,
     },
 
-    /// Remove a user
+    /// Remove a principal
     Remove {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// User ID to remove
+        /// Principal ID to remove
         #[arg(long)]
-        user_id: Option<String>,
+        principal_id: Option<String>,
 
-        /// Skip interactive prompts (requires --user-id)
+        /// Skip interactive prompts (requires --principal-id)
         #[arg(long)]
         non_interactive: bool,
 
@@ -98,15 +98,15 @@ pub enum TokenCommands {
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// User ID for the token
+        /// Principal ID for the token
         #[arg(long)]
-        user_id: Option<String>,
+        principal_id: Option<String>,
 
         /// Token expiration in days (omit for no expiration)
         #[arg(long)]
         expires_days: Option<i64>,
 
-        /// Skip interactive prompts (requires --user-id)
+        /// Skip interactive prompts (requires --principal-id)
         #[arg(long)]
         non_interactive: bool,
     },
@@ -170,15 +170,15 @@ pub enum NamespaceCommands {
 
 #[derive(Subcommand)]
 pub enum PermissionCommands {
-    /// Grant permissions to a user on a namespace
+    /// Grant permissions to a principal on a namespace
     Grant {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// User ID to grant permissions to
+        /// Principal ID to grant permissions to
         #[arg(long)]
-        user_id: Option<String>,
+        principal_id: Option<String>,
 
         /// Namespace ID to grant access to
         #[arg(long)]
@@ -188,26 +188,26 @@ pub enum PermissionCommands {
         #[arg(long)]
         permissions: Option<String>,
 
-        /// Skip interactive prompts (requires --user-id, --namespace-id, --permissions)
+        /// Skip interactive prompts (requires --principal-id, --namespace-id, --permissions)
         #[arg(long)]
         non_interactive: bool,
     },
 
-    /// Revoke a user's permissions on a namespace
+    /// Revoke a principal's permissions on a namespace
     Revoke {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// User ID to revoke permissions from
+        /// Principal ID to revoke permissions from
         #[arg(long)]
-        user_id: Option<String>,
+        principal_id: Option<String>,
 
         /// Namespace ID to revoke access from
         #[arg(long)]
         namespace_id: Option<String>,
 
-        /// Skip interactive prompts (requires --user-id and --namespace-id)
+        /// Skip interactive prompts (requires --principal-id and --namespace-id)
         #[arg(long)]
         non_interactive: bool,
 
@@ -216,15 +216,15 @@ pub enum PermissionCommands {
         yes: bool,
     },
 
-    /// Grant permissions to a user on a specific repository
+    /// Grant permissions to a principal on a specific repository
     RepoGrant {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// User ID to grant permissions to
+        /// Principal ID to grant permissions to
         #[arg(long)]
-        user_id: Option<String>,
+        principal_id: Option<String>,
 
         /// Repository ID to grant access to
         #[arg(long)]
@@ -234,26 +234,26 @@ pub enum PermissionCommands {
         #[arg(long)]
         permissions: Option<String>,
 
-        /// Skip interactive prompts (requires --user-id, --repo-id, --permissions)
+        /// Skip interactive prompts (requires --principal-id, --repo-id, --permissions)
         #[arg(long)]
         non_interactive: bool,
     },
 
-    /// Revoke a user's permissions on a specific repository
+    /// Revoke a principal's permissions on a specific repository
     RepoRevoke {
         /// Data directory for database and repositories
         #[arg(long, default_value = "./data")]
         data_dir: String,
 
-        /// User ID to revoke permissions from
+        /// Principal ID to revoke permissions from
         #[arg(long)]
-        user_id: Option<String>,
+        principal_id: Option<String>,
 
         /// Repository ID to revoke access from
         #[arg(long)]
         repo_id: Option<String>,
 
-        /// Skip interactive prompts (requires --user-id and --repo-id)
+        /// Skip interactive prompts (requires --principal-id and --repo-id)
         #[arg(long)]
         non_interactive: bool,
 

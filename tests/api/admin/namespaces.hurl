@@ -79,7 +79,7 @@ HTTP 401
 
 # List namespaces - forbidden (user token instead of admin)
 GET {{base_url}}/api/v1/admin/namespaces
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 403
 
 # Delete namespace - success (the one we just created)

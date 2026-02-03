@@ -5,20 +5,20 @@ use crate::types::{NamespaceGrant, Permission, RepoGrant};
 
 use super::init_store;
 use super::pickers::{
-    confirm_action, get_or_pick_user, pick_grant, pick_namespace, pick_permissions, pick_repo,
+    confirm_action, get_or_pick_principal, pick_grant, pick_namespace, pick_permissions, pick_repo,
     pick_repo_grant, pick_repo_permissions, resolve_namespace_name, resolve_repo_display_name,
 };
 
 pub fn run_permission_grant(
     data_dir: String,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     namespace_id: Option<String>,
     permissions: Option<String>,
     non_interactive: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (user, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
         Some(result) => result,
         None => return Ok(()),
     };
@@ -54,7 +54,7 @@ pub fn run_permission_grant(
 
     let now = Utc::now();
     let grant = NamespaceGrant {
-        user_id: user.id.clone(),
+        principal_id: principal.id.clone(),
         namespace_id: namespace.id.clone(),
         allow_bits,
         deny_bits: Permission::default(),
@@ -78,32 +78,32 @@ pub fn run_permission_grant(
 
 pub fn run_permission_revoke(
     data_dir: String,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     namespace_id: Option<String>,
     non_interactive: bool,
     yes: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (user, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
         Some(result) => result,
         None => return Ok(()),
     };
 
     let grant = if let Some(ns_id) = namespace_id {
         store
-            .get_namespace_grant(&user.id, &ns_id)?
+            .get_namespace_grant(&principal.id, &ns_id)?
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Grant not found for user {} on namespace {}",
-                    user.id,
+                    "Grant not found for principal {} on namespace {}",
+                    principal.id,
                     ns_id
                 )
             })?
     } else if non_interactive {
         anyhow::bail!("--namespace-id is required in non-interactive mode");
     } else {
-        match pick_grant(&store, &user.id)? {
+        match pick_grant(&store, &principal.id)? {
             Some(grant) => grant,
             None => return Ok(()),
         }
@@ -122,7 +122,7 @@ pub fn run_permission_revoke(
         return Ok(());
     }
 
-    store.delete_namespace_grant(&grant.user_id, &grant.namespace_id)?;
+    store.delete_namespace_grant(&grant.principal_id, &grant.namespace_id)?;
 
     println!();
     println!("Revoked grant.");
@@ -133,14 +133,14 @@ pub fn run_permission_revoke(
 
 pub fn run_permission_repo_grant(
     data_dir: String,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     repo_id: Option<String>,
     permissions: Option<String>,
     non_interactive: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (user, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
         Some(result) => result,
         None => return Ok(()),
     };
@@ -178,7 +178,7 @@ pub fn run_permission_repo_grant(
 
     let now = Utc::now();
     let grant = RepoGrant {
-        user_id: user.id.clone(),
+        principal_id: principal.id.clone(),
         repo_id: repo.id.clone(),
         allow_bits,
         deny_bits: Permission::default(),
@@ -203,26 +203,26 @@ pub fn run_permission_repo_grant(
 
 pub fn run_permission_repo_revoke(
     data_dir: String,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     repo_id: Option<String>,
     non_interactive: bool,
     yes: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (user, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
         Some(result) => result,
         None => return Ok(()),
     };
 
     let grant = if let Some(r_id) = repo_id {
-        store.get_repo_grant(&user.id, &r_id)?.ok_or_else(|| {
-            anyhow::anyhow!("Grant not found for user {} on repo {}", user.id, r_id)
+        store.get_repo_grant(&principal.id, &r_id)?.ok_or_else(|| {
+            anyhow::anyhow!("Grant not found for principal {} on repo {}", principal.id, r_id)
         })?
     } else if non_interactive {
         anyhow::bail!("--repo-id is required in non-interactive mode");
     } else {
-        match pick_repo_grant(&store, &user.id)? {
+        match pick_repo_grant(&store, &principal.id)? {
             Some(grant) => grant,
             None => return Ok(()),
         }
@@ -241,7 +241,7 @@ pub fn run_permission_repo_revoke(
         return Ok(());
     }
 
-    store.delete_repo_grant(&grant.user_id, &grant.repo_id)?;
+    store.delete_repo_grant(&grant.principal_id, &grant.repo_id)?;
 
     println!();
     println!("Revoked repo grant.");

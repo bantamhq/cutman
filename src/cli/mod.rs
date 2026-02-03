@@ -9,15 +9,15 @@ mod namespace;
 mod new;
 mod permission;
 pub mod pickers;
+mod principal;
 pub mod repo;
 mod tag;
 mod token;
-mod user;
 
 pub use auth::{run_auth_login, run_auth_logout};
 pub use commands::{
     AdminCommands, AuthCommands, CredentialCommands, FolderCommands, NamespaceCommands,
-    PermissionCommands, RepoCommands, TagCommands, TokenCommands, UserCommands,
+    PermissionCommands, PrincipalCommands, RepoCommands, TagCommands, TokenCommands,
 };
 pub use credential::{
     print_credential_help, run_credential_erase, run_credential_get, run_credential_store,
@@ -30,10 +30,10 @@ pub use permission::{
     run_permission_grant, run_permission_repo_grant, run_permission_repo_revoke,
     run_permission_revoke,
 };
+pub use principal::{run_principal_add, run_principal_remove};
 pub use repo::{run_repo_clone, run_repo_delete, run_repo_move, run_repo_tag};
 pub use tag::{run_tag_create, run_tag_delete};
 pub use token::{run_token_create, run_token_revoke};
-pub use user::{run_user_add, run_user_remove};
 
 use crate::store::SqliteStore;
 

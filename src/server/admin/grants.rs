@@ -16,6 +16,8 @@ use crate::server::dto::{
 use crate::server::response::{ApiError, ApiResponse};
 use crate::types::{NamespaceGrant, Permission, RepoGrant};
 
+// Path parameter names match the route: /principals/{id}/...
+
 fn parse_permissions(perms: &[String]) -> Result<Permission, ApiError> {
     let mut result = Permission::default();
     for p in perms {
@@ -29,14 +31,14 @@ fn parse_permissions(perms: &[String]) -> Result<Permission, ApiError> {
 pub async fn create_namespace_grant(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
-    Path(user_id): Path<String>,
+    Path(principal_id): Path<String>,
     Json(req): Json<NamespaceGrantRequest>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&user_id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&principal_id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let ns = state
         .store
@@ -49,7 +51,7 @@ pub async fn create_namespace_grant(
 
     let now = Utc::now();
     let grant = NamespaceGrant {
-        user_id: user.id.clone(),
+        principal_id: principal.id.clone(),
         namespace_id: ns.id,
         allow_bits,
         deny_bits,
@@ -67,7 +69,7 @@ pub async fn create_namespace_grant(
 
     let grants = state
         .store
-        .list_user_namespace_grants(&user.id)
+        .list_principal_namespace_grants(&principal.id)
         .map_err(|_| ApiError::internal("Failed to list grants"))?;
 
     let responses: Vec<NamespaceGrantResponse> = grants
@@ -85,17 +87,17 @@ pub async fn create_namespace_grant(
 pub async fn list_namespace_grants(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
-    Path(user_id): Path<String>,
+    Path(principal_id): Path<String>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&user_id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&principal_id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let grants = state
         .store
-        .list_user_namespace_grants(&user.id)
+        .list_principal_namespace_grants(&principal.id)
         .map_err(|_| ApiError::internal("Failed to list grants"))?;
 
     let responses: Vec<NamespaceGrantResponse> = grants
@@ -121,15 +123,15 @@ pub async fn get_namespace_grant(
     State(state): State<Arc<AppState>>,
     Path(path): Path<NamespaceGrantPath>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&path.id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&path.id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let grant = state
         .store
-        .get_namespace_grant(&user.id, &path.ns_id)
+        .get_namespace_grant(&principal.id, &path.ns_id)
         .map_err(|_| ApiError::internal("Failed to get grant"))?
         .ok_or_else(|| ApiError::not_found("Grant not found"))?;
 
@@ -147,21 +149,21 @@ pub async fn delete_namespace_grant(
     State(state): State<Arc<AppState>>,
     Path(path): Path<NamespaceGrantPath>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&path.id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&path.id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let grant = state
         .store
-        .get_namespace_grant(&user.id, &path.ns_id)
+        .get_namespace_grant(&principal.id, &path.ns_id)
         .map_err(|_| ApiError::internal("Failed to check grant"))?
         .ok_or_else(|| ApiError::not_found("Grant not found"))?;
 
     state
         .store
-        .delete_namespace_grant(&user.id, &grant.namespace_id)
+        .delete_namespace_grant(&principal.id, &grant.namespace_id)
         .map_err(|_| ApiError::internal("Failed to delete grant"))?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
@@ -170,14 +172,14 @@ pub async fn delete_namespace_grant(
 pub async fn create_repo_grant(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
-    Path(user_id): Path<String>,
+    Path(principal_id): Path<String>,
     Json(req): Json<RepoGrantRequest>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&user_id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&principal_id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let repo = state
         .store
@@ -190,7 +192,7 @@ pub async fn create_repo_grant(
 
     let now = Utc::now();
     let grant = RepoGrant {
-        user_id: user.id.clone(),
+        principal_id: principal.id.clone(),
         repo_id: repo.id,
         allow_bits,
         deny_bits,
@@ -205,7 +207,7 @@ pub async fn create_repo_grant(
 
     let grants = state
         .store
-        .list_user_repo_grants(&user.id)
+        .list_principal_repo_grants(&principal.id)
         .map_err(|_| ApiError::internal("Failed to list grants"))?;
 
     let responses: Vec<RepoGrantResponse> = grants
@@ -223,17 +225,17 @@ pub async fn create_repo_grant(
 pub async fn list_repo_grants(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
-    Path(user_id): Path<String>,
+    Path(principal_id): Path<String>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&user_id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&principal_id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let grants = state
         .store
-        .list_user_repo_grants(&user.id)
+        .list_principal_repo_grants(&principal.id)
         .map_err(|_| ApiError::internal("Failed to list grants"))?;
 
     let responses: Vec<RepoGrantResponse> = grants
@@ -259,15 +261,15 @@ pub async fn get_repo_grant(
     State(state): State<Arc<AppState>>,
     Path(path): Path<RepoGrantPath>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&path.id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&path.id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let grant = state
         .store
-        .get_repo_grant(&user.id, &path.repo_id)
+        .get_repo_grant(&principal.id, &path.repo_id)
         .map_err(|_| ApiError::internal("Failed to get grant"))?
         .ok_or_else(|| ApiError::not_found("Grant not found"))?;
 
@@ -285,21 +287,21 @@ pub async fn delete_repo_grant(
     State(state): State<Arc<AppState>>,
     Path(path): Path<RepoGrantPath>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&path.id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&path.id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let grant = state
         .store
-        .get_repo_grant(&user.id, &path.repo_id)
+        .get_repo_grant(&principal.id, &path.repo_id)
         .map_err(|_| ApiError::internal("Failed to check grant"))?
         .ok_or_else(|| ApiError::not_found("Grant not found"))?;
 
     state
         .store
-        .delete_repo_grant(&user.id, &grant.repo_id)
+        .delete_repo_grant(&principal.id, &grant.repo_id)
         .map_err(|_| ApiError::internal("Failed to delete grant"))?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)

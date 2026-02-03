@@ -7,34 +7,34 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::auth::RequireUser;
+use crate::auth::RequirePrincipal;
 use crate::server::AppState;
-use crate::server::dto::{NamespaceResponse, UpdateNamespaceRequest, UserGrantResponse};
+use crate::server::dto::{NamespaceResponse, PrincipalGrantResponse, UpdateNamespaceRequest};
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
 use crate::types::Permission;
 
 use super::access::require_namespace_permission;
 
 pub async fn list_namespaces(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
     let mut namespaces = Vec::new();
 
     let primary_ns = store
-        .get_namespace(&user.primary_namespace_id)
+        .get_namespace(&principal.primary_namespace_id)
         .api_err("Failed to get primary namespace")?
         .ok_or_else(|| ApiError::internal("Primary namespace not found"))?;
     namespaces.push(primary_ns);
 
     let ns_grants = store
-        .list_user_namespace_grants(&user.id)
+        .list_principal_namespace_grants(&principal.id)
         .api_err("Failed to list namespace grants")?;
 
     for grant in ns_grants {
-        if grant.namespace_id == user.primary_namespace_id {
+        if grant.namespace_id == principal.primary_namespace_id {
             continue;
         }
         if let Some(ns) = store
@@ -46,7 +46,7 @@ pub async fn list_namespaces(
     }
 
     let repo_grants = store
-        .list_user_repo_grants(&user.id)
+        .list_principal_repo_grants(&principal.id)
         .api_err("Failed to list repo grants")?;
 
     for grant in repo_grants {
@@ -68,7 +68,7 @@ pub async fn list_namespaces(
     let responses: Vec<NamespaceResponse> = namespaces
         .into_iter()
         .map(|ns| NamespaceResponse {
-            is_primary: ns.id == user.primary_namespace_id,
+            is_primary: ns.id == principal.primary_namespace_id,
             namespace: ns,
         })
         .collect();
@@ -77,12 +77,12 @@ pub async fn list_namespaces(
 }
 
 pub async fn update_namespace(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<UpdateNamespaceRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let mut ns = store
@@ -90,7 +90,7 @@ pub async fn update_namespace(
         .api_err("Failed to get namespace")?
         .or_not_found("Namespace not found")?;
 
-    require_namespace_permission(store, user, &ns.id, Permission::NAMESPACE_ADMIN)?;
+    require_namespace_permission(store, principal, &ns.id, Permission::NAMESPACE_ADMIN)?;
 
     if let Some(limit) = req.repo_limit {
         ns.repo_limit = Some(limit);
@@ -107,11 +107,11 @@ pub async fn update_namespace(
 }
 
 pub async fn delete_namespace(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let ns = store
@@ -119,11 +119,11 @@ pub async fn delete_namespace(
         .api_err("Failed to get namespace")?
         .or_not_found("Namespace not found")?;
 
-    if ns.id == user.primary_namespace_id {
+    if ns.id == principal.primary_namespace_id {
         return Err(ApiError::forbidden("Cannot delete your primary namespace"));
     }
 
-    require_namespace_permission(store, user, &ns.id, Permission::NAMESPACE_ADMIN)?;
+    require_namespace_permission(store, principal, &ns.id, Permission::NAMESPACE_ADMIN)?;
 
     store
         .delete_namespace(&ns.id)
@@ -133,11 +133,11 @@ pub async fn delete_namespace(
 }
 
 pub async fn list_namespace_grants(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let ns = store
@@ -145,16 +145,16 @@ pub async fn list_namespace_grants(
         .api_err("Failed to get namespace")?
         .or_not_found("Namespace not found")?;
 
-    require_namespace_permission(store, user, &ns.id, Permission::NAMESPACE_ADMIN)?;
+    require_namespace_permission(store, principal, &ns.id, Permission::NAMESPACE_ADMIN)?;
 
     let grants = store
         .list_namespace_grants_for_namespace(&ns.id)
         .api_err("Failed to list grants")?;
 
-    let responses: Vec<UserGrantResponse> = grants
+    let responses: Vec<PrincipalGrantResponse> = grants
         .into_iter()
-        .map(|g| UserGrantResponse {
-            user_id: g.user_id,
+        .map(|g| PrincipalGrantResponse {
+            principal_id: g.principal_id,
             allow: g.allow_bits.to_strings(),
             deny: g.deny_bits.to_strings(),
         })

@@ -17,7 +17,7 @@ pub struct Namespace {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct User {
+pub struct Principal {
     pub id: String,
     pub primary_namespace_id: String,
     pub created_at: DateTime<Utc>,
@@ -33,7 +33,7 @@ pub struct Token {
     pub token_lookup: String,
     pub is_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_id: Option<String>,
+    pub principal_id: Option<String>,
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
@@ -94,7 +94,7 @@ impl Folder {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamespaceGrant {
-    pub user_id: String,
+    pub principal_id: String,
     pub namespace_id: String,
     pub allow_bits: Permission,
     pub deny_bits: Permission,
@@ -104,7 +104,7 @@ pub struct NamespaceGrant {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoGrant {
-    pub user_id: String,
+    pub principal_id: String,
     pub repo_id: String,
     pub allow_bits: Permission,
     pub deny_bits: Permission,

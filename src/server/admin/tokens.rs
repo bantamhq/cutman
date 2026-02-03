@@ -87,7 +87,7 @@ pub fn token_to_response(state: &Arc<AppState>, token: Token) -> Result<TokenRes
     let mut response = TokenResponse {
         id: token.id,
         is_admin: token.is_admin,
-        user_id: token.user_id.clone(),
+        principal_id: token.principal_id.clone(),
         created_at: token.created_at,
         expires_at: token.expires_at,
         last_used_at: token.last_used_at,
@@ -96,10 +96,10 @@ pub fn token_to_response(state: &Arc<AppState>, token: Token) -> Result<TokenRes
     };
 
     if !token.is_admin {
-        if let Some(user_id) = &token.user_id {
+        if let Some(principal_id) = &token.principal_id {
             let ns_grants = state
                 .store
-                .list_user_namespace_grants(user_id)
+                .list_principal_namespace_grants(principal_id)
                 .map_err(|_| ApiError::internal("Failed to list namespace grants"))?;
 
             response.namespace_grants = ns_grants
@@ -113,7 +113,7 @@ pub fn token_to_response(state: &Arc<AppState>, token: Token) -> Result<TokenRes
 
             let repo_grants = state
                 .store
-                .list_user_repo_grants(user_id)
+                .list_principal_repo_grants(principal_id)
                 .map_err(|_| ApiError::internal("Failed to list repo grants"))?;
 
             response.repo_grants = repo_grants

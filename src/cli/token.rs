@@ -5,20 +5,20 @@ use crate::store::Store;
 
 use super::init_store;
 use super::pickers::{
-    confirm_action, create_token_for_user, get_or_pick_user, pick_expiration, pick_token,
+    confirm_action, create_token_for_principal, get_or_pick_principal, pick_expiration, pick_token,
     resolve_token_username,
 };
 
 pub fn run_token_create(
     data_dir: String,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     expires_days: Option<i64>,
     non_interactive: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (user_id, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
-        Some((user, name)) => (Some(user.id), name),
+    let (principal_id, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
+        Some((principal, name)) => (Some(principal.id), name),
         None => return Ok(()),
     };
 
@@ -41,7 +41,7 @@ pub fn run_token_create(
     };
 
     let generator = TokenGenerator::new();
-    let (token, raw_token) = create_token_for_user(&generator, user_id, expires_in)?;
+    let (token, raw_token) = create_token_for_principal(&generator, principal_id, expires_in)?;
     store.create_token(&token)?;
 
     println!();

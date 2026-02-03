@@ -5,12 +5,12 @@ use uuid::Uuid;
 use crate::auth::TokenGenerator;
 use crate::server::validation::validate_namespace_name;
 use crate::store::Store;
-use crate::types::{Namespace, User};
+use crate::types::{Namespace, Principal};
 
 use super::init_store;
-use super::pickers::{confirm_action, create_token_for_user, get_or_pick_user, pick_expiration};
+use super::pickers::{confirm_action, create_token_for_principal, get_or_pick_principal, pick_expiration};
 
-pub fn run_user_add(
+pub fn run_principal_add(
     data_dir: String,
     username: Option<String>,
     create_token_flag: bool,
@@ -39,7 +39,7 @@ pub fn run_user_add(
 
     let now = Utc::now();
     let namespace_id = Uuid::new_v4().to_string();
-    let user_id = Uuid::new_v4().to_string();
+    let principal_id = Uuid::new_v4().to_string();
 
     let namespace = Namespace {
         id: namespace_id.clone(),
@@ -50,19 +50,19 @@ pub fn run_user_add(
         external_id: None,
     };
 
-    let user = User {
-        id: user_id.clone(),
+    let principal = Principal {
+        id: principal_id.clone(),
         primary_namespace_id: namespace_id,
         created_at: now,
         updated_at: now,
     };
 
     store.create_namespace(&namespace)?;
-    store.create_user(&user)?;
+    store.create_principal(&principal)?;
 
     println!();
     println!(
-        "Created user \"{}\" with namespace \"{}\"",
+        "Created principal \"{}\" with namespace \"{}\"",
         username, username
     );
 
@@ -90,7 +90,7 @@ pub fn run_user_add(
         };
 
         let generator = TokenGenerator::new();
-        let (token, raw_token) = create_token_for_user(&generator, Some(user_id), expires_in)?;
+        let (token, raw_token) = create_token_for_principal(&generator, Some(principal_id), expires_in)?;
         store.create_token(&token)?;
 
         println!();
@@ -103,22 +103,22 @@ pub fn run_user_add(
     Ok(())
 }
 
-pub fn run_user_remove(
+pub fn run_principal_remove(
     data_dir: String,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     non_interactive: bool,
     yes: bool,
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (user, username) = match get_or_pick_user(&store, user_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
         Some(result) => result,
         None => return Ok(()),
     };
 
     let confirmed = confirm_action(
         &format!(
-            "Delete user '{}'? This will also delete their namespace, tokens, and grants.",
+            "Delete principal '{}'? This will also delete their namespace, tokens, and grants.",
             username
         ),
         yes,
@@ -130,23 +130,23 @@ pub fn run_user_remove(
         return Ok(());
     }
 
-    for token in store.list_user_tokens(&user.id)? {
+    for token in store.list_principal_tokens(&principal.id)? {
         store.delete_token(&token.id)?;
     }
 
-    for grant in store.list_user_namespace_grants(&user.id)? {
-        store.delete_namespace_grant(&user.id, &grant.namespace_id)?;
+    for grant in store.list_principal_namespace_grants(&principal.id)? {
+        store.delete_namespace_grant(&principal.id, &grant.namespace_id)?;
     }
 
-    for grant in store.list_user_repo_grants(&user.id)? {
-        store.delete_repo_grant(&user.id, &grant.repo_id)?;
+    for grant in store.list_principal_repo_grants(&principal.id)? {
+        store.delete_repo_grant(&principal.id, &grant.repo_id)?;
     }
 
-    store.delete_user(&user.id)?;
-    store.delete_namespace(&user.primary_namespace_id)?;
+    store.delete_principal(&principal.id)?;
+    store.delete_namespace(&principal.primary_namespace_id)?;
 
     println!();
-    println!("Deleted user '{}'", username);
+    println!("Deleted principal '{}'", username);
     println!();
 
     Ok(())

@@ -1,7 +1,7 @@
 mod grants;
 mod namespaces;
+mod principals;
 mod tokens;
-mod users;
 
 use std::sync::Arc;
 
@@ -23,39 +23,51 @@ pub fn admin_router() -> Router<Arc<AppState>> {
         .route("/tokens", get(tokens::list_tokens))
         .route("/tokens/{id}", get(tokens::get_token))
         .route("/tokens/{id}", delete(tokens::delete_token))
-        // User routes
-        .route("/users", post(users::create_user))
-        .route("/users", get(users::list_users))
-        .route("/users/{id}", get(users::get_user))
-        .route("/users/{id}", delete(users::delete_user))
-        .route("/users/{id}/tokens", get(users::list_user_tokens))
-        .route("/users/{id}/tokens", post(users::create_user_token))
+        // Principal routes
+        .route("/principals", post(principals::create_principal))
+        .route("/principals", get(principals::list_principals))
+        .route("/principals/{id}", get(principals::get_principal))
+        .route("/principals/{id}", delete(principals::delete_principal))
+        .route(
+            "/principals/{id}/tokens",
+            get(principals::list_principal_tokens),
+        )
+        .route(
+            "/principals/{id}/tokens",
+            post(principals::create_principal_token),
+        )
         // Namespace grant routes
         .route(
-            "/users/{id}/namespace-grants",
+            "/principals/{id}/namespace-grants",
             post(grants::create_namespace_grant),
         )
         .route(
-            "/users/{id}/namespace-grants",
+            "/principals/{id}/namespace-grants",
             get(grants::list_namespace_grants),
         )
         .route(
-            "/users/{id}/namespace-grants/{ns_id}",
+            "/principals/{id}/namespace-grants/{ns_id}",
             get(grants::get_namespace_grant),
         )
         .route(
-            "/users/{id}/namespace-grants/{ns_id}",
+            "/principals/{id}/namespace-grants/{ns_id}",
             delete(grants::delete_namespace_grant),
         )
         // Repo grant routes
-        .route("/users/{id}/repo-grants", post(grants::create_repo_grant))
-        .route("/users/{id}/repo-grants", get(grants::list_repo_grants))
         .route(
-            "/users/{id}/repo-grants/{repo_id}",
+            "/principals/{id}/repo-grants",
+            post(grants::create_repo_grant),
+        )
+        .route(
+            "/principals/{id}/repo-grants",
+            get(grants::list_repo_grants),
+        )
+        .route(
+            "/principals/{id}/repo-grants/{repo_id}",
             get(grants::get_repo_grant),
         )
         .route(
-            "/users/{id}/repo-grants/{repo_id}",
+            "/principals/{id}/repo-grants/{repo_id}",
             delete(grants::delete_repo_grant),
         )
 }

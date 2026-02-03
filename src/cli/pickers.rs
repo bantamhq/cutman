@@ -6,17 +6,17 @@ use uuid::Uuid;
 
 use crate::auth::TokenGenerator;
 use crate::store::Store;
-use crate::types::{Namespace, NamespaceGrant, Permission, Repo, RepoGrant, Tag, Token, User};
+use crate::types::{Namespace, NamespaceGrant, Permission, Principal, Repo, RepoGrant, Tag, Token};
 
-/// User with resolved namespace name for display
-pub struct UserDisplay {
-    pub user: User,
+/// Principal with resolved namespace name for display
+pub struct PrincipalDisplay {
+    pub principal: Principal,
     pub namespace_name: String,
 }
 
-impl fmt::Display for UserDisplay {
+impl fmt::Display for PrincipalDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({}...)", self.namespace_name, &self.user.id[..8])
+        write!(f, "{} ({}...)", self.namespace_name, &self.principal.id[..8])
     }
 }
 
@@ -248,15 +248,15 @@ pub fn resolve_repo_display_name(store: &impl Store, repo_id: &str) -> anyhow::R
     }
 }
 
-/// Load users with their namespace names
-fn load_users_with_namespaces(store: &impl Store) -> anyhow::Result<Vec<UserDisplay>> {
-    let users = store.list_users("", 1000)?;
-    let displays = users
+/// Load principals with their namespace names
+fn load_principals_with_namespaces(store: &impl Store) -> anyhow::Result<Vec<PrincipalDisplay>> {
+    let principals = store.list_principals("", 1000)?;
+    let displays = principals
         .into_iter()
-        .map(|user| {
-            let namespace_name = resolve_namespace_name(store, &user.primary_namespace_id);
-            UserDisplay {
-                user,
+        .map(|principal| {
+            let namespace_name = resolve_namespace_name(store, &principal.primary_namespace_id);
+            PrincipalDisplay {
+                principal,
                 namespace_name,
             }
         })
@@ -274,7 +274,7 @@ fn load_namespaces_with_ownership(
 
     for namespace in namespaces {
         let has_owner = store
-            .get_user_by_primary_namespace_id(&namespace.id)?
+            .get_principal_by_primary_namespace_id(&namespace.id)?
             .is_some();
 
         if exclude_owned && has_owner {
@@ -291,15 +291,15 @@ fn load_namespaces_with_ownership(
 }
 
 /// Load tokens with resolved usernames
-fn load_tokens_with_users(store: &impl Store) -> anyhow::Result<Vec<TokenDisplay>> {
+fn load_tokens_with_principals(store: &impl Store) -> anyhow::Result<Vec<TokenDisplay>> {
     let tokens = store.list_tokens("", 1000)?;
     let mut displays = Vec::with_capacity(tokens.len());
 
     for token in tokens {
-        let username = match &token.user_id {
-            Some(user_id) => store
-                .get_user(user_id)?
-                .map(|u| resolve_namespace_name(store, &u.primary_namespace_id)),
+        let username = match &token.principal_id {
+            Some(principal_id) => store
+                .get_principal(principal_id)?
+                .map(|p| resolve_namespace_name(store, &p.primary_namespace_id)),
             None => None,
         };
 
@@ -309,12 +309,12 @@ fn load_tokens_with_users(store: &impl Store) -> anyhow::Result<Vec<TokenDisplay
     Ok(displays)
 }
 
-/// Load grants for a user with namespace names
-fn load_user_grants_with_names(
+/// Load grants for a principal with namespace names
+fn load_principal_grants_with_names(
     store: &impl Store,
-    user_id: &str,
+    principal_id: &str,
 ) -> anyhow::Result<Vec<GrantDisplay>> {
-    let grants = store.list_user_namespace_grants(user_id)?;
+    let grants = store.list_principal_namespace_grants(principal_id)?;
     let displays = grants
         .into_iter()
         .map(|grant| {
@@ -328,23 +328,23 @@ fn load_user_grants_with_names(
     Ok(displays)
 }
 
-/// Pick a user from the list
-pub fn pick_user(store: &impl Store) -> anyhow::Result<Option<User>> {
-    let users = load_users_with_namespaces(store)?;
+/// Pick a principal from the list
+pub fn pick_principal(store: &impl Store) -> anyhow::Result<Option<Principal>> {
+    let principals = load_principals_with_namespaces(store)?;
 
-    if users.is_empty() {
-        println!("No users found.");
+    if principals.is_empty() {
+        println!("No principals found.");
         return Ok(None);
     }
 
-    let selection = Select::new("Select user:", users)
+    let selection = Select::new("Select principal:", principals)
         .with_page_size(15)
         .with_help_message("Type to filter, Enter to select")
         .with_vim_mode(true)
         .prompt();
 
     match selection {
-        Ok(display) => Ok(Some(display.user)),
+        Ok(display) => Ok(Some(display.principal)),
         Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
         Err(e) => Err(e.into()),
     }
@@ -381,7 +381,7 @@ pub fn pick_namespace(
 
 /// Pick a token from the list
 pub fn pick_token(store: &impl Store) -> anyhow::Result<Option<Token>> {
-    let tokens = load_tokens_with_users(store)?;
+    let tokens = load_tokens_with_principals(store)?;
 
     if tokens.is_empty() {
         println!("No tokens found.");
@@ -401,12 +401,12 @@ pub fn pick_token(store: &impl Store) -> anyhow::Result<Option<Token>> {
     }
 }
 
-/// Pick a grant for a specific user
-pub fn pick_grant(store: &impl Store, user_id: &str) -> anyhow::Result<Option<NamespaceGrant>> {
-    let grants = load_user_grants_with_names(store, user_id)?;
+/// Pick a grant for a specific principal
+pub fn pick_grant(store: &impl Store, principal_id: &str) -> anyhow::Result<Option<NamespaceGrant>> {
+    let grants = load_principal_grants_with_names(store, principal_id)?;
 
     if grants.is_empty() {
-        println!("No grants found for this user.");
+        println!("No grants found for this principal.");
         return Ok(None);
     }
 
@@ -486,9 +486,9 @@ pub fn pick_expiration() -> anyhow::Result<Option<Option<Duration>>> {
     }
 }
 
-/// Get all users for listing
-pub fn list_users(store: &impl Store) -> anyhow::Result<Vec<UserDisplay>> {
-    load_users_with_namespaces(store)
+/// Get all principals for listing
+pub fn list_principals(store: &impl Store) -> anyhow::Result<Vec<PrincipalDisplay>> {
+    load_principals_with_namespaces(store)
 }
 
 /// Get all namespaces for listing
@@ -498,61 +498,61 @@ pub fn list_namespaces(store: &impl Store) -> anyhow::Result<Vec<NamespaceDispla
 
 /// Get all tokens for listing
 pub fn list_tokens(store: &impl Store) -> anyhow::Result<Vec<TokenDisplay>> {
-    load_tokens_with_users(store)
+    load_tokens_with_principals(store)
 }
 
 /// Get all grants for listing
 pub fn list_all_grants(
     store: &impl Store,
-) -> anyhow::Result<Vec<(UserDisplay, Vec<GrantDisplay>)>> {
-    let users = load_users_with_namespaces(store)?;
+) -> anyhow::Result<Vec<(PrincipalDisplay, Vec<GrantDisplay>)>> {
+    let principals = load_principals_with_namespaces(store)?;
     let mut result = Vec::new();
 
-    for user_display in users {
-        let grants = load_user_grants_with_names(store, &user_display.user.id)?;
+    for principal_display in principals {
+        let grants = load_principal_grants_with_names(store, &principal_display.principal.id)?;
         if !grants.is_empty() {
-            result.push((user_display, grants));
+            result.push((principal_display, grants));
         }
     }
 
     Ok(result)
 }
 
-fn resolve_user_with_name(store: &impl Store, user_id: &str) -> anyhow::Result<(User, String)> {
-    let user = store
-        .get_user(user_id)?
-        .ok_or_else(|| anyhow::anyhow!("User not found: {}", user_id))?;
-    let name = resolve_namespace_name(store, &user.primary_namespace_id);
-    Ok((user, name))
+fn resolve_principal_with_name(store: &impl Store, principal_id: &str) -> anyhow::Result<(Principal, String)> {
+    let principal = store
+        .get_principal(principal_id)?
+        .ok_or_else(|| anyhow::anyhow!("Principal not found: {}", principal_id))?;
+    let name = resolve_namespace_name(store, &principal.primary_namespace_id);
+    Ok((principal, name))
 }
 
-/// Get a user by ID or interactively pick one
-pub fn get_or_pick_user(
+/// Get a principal by ID or interactively pick one
+pub fn get_or_pick_principal(
     store: &impl Store,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     non_interactive: bool,
-) -> anyhow::Result<Option<(User, String)>> {
-    if let Some(id) = user_id {
-        Ok(Some(resolve_user_with_name(store, &id)?))
+) -> anyhow::Result<Option<(Principal, String)>> {
+    if let Some(id) = principal_id {
+        Ok(Some(resolve_principal_with_name(store, &id)?))
     } else if non_interactive {
-        anyhow::bail!("--user-id is required in non-interactive mode");
+        anyhow::bail!("--principal-id is required in non-interactive mode");
     } else {
-        match pick_user(store)? {
-            Some(user) => {
-                let name = resolve_namespace_name(store, &user.primary_namespace_id);
-                Ok(Some((user, name)))
+        match pick_principal(store)? {
+            Some(principal) => {
+                let name = resolve_namespace_name(store, &principal.primary_namespace_id);
+                Ok(Some((principal, name)))
             }
             None => Ok(None),
         }
     }
 }
 
-/// Resolve a token's username from its user_id
+/// Resolve a token's username from its principal_id
 pub fn resolve_token_username(store: &impl Store, token: &Token) -> anyhow::Result<Option<String>> {
-    if let Some(ref uid) = token.user_id {
-        if let Some(user) = store.get_user(uid)? {
+    if let Some(ref pid) = token.principal_id {
+        if let Some(principal) = store.get_principal(pid)? {
             return Ok(store
-                .get_namespace(&user.primary_namespace_id)?
+                .get_namespace(&principal.primary_namespace_id)?
                 .map(|n| n.name));
         }
     }
@@ -572,10 +572,10 @@ pub fn confirm_action(message: &str, yes: bool, non_interactive: bool) -> anyhow
     }
 }
 
-/// Create a new token record for a user
-pub fn create_token_for_user(
+/// Create a new token record for a principal
+pub fn create_token_for_principal(
     generator: &TokenGenerator,
-    user_id: Option<String>,
+    principal_id: Option<String>,
     expires_in: Option<Duration>,
 ) -> anyhow::Result<(Token, String)> {
     let (raw_token, lookup, hash) = generator.generate()?;
@@ -584,8 +584,8 @@ pub fn create_token_for_user(
         id: Uuid::new_v4().to_string(),
         token_hash: hash,
         token_lookup: lookup,
-        is_admin: user_id.is_none(),
-        user_id,
+        is_admin: principal_id.is_none(),
+        principal_id,
         created_at: now,
         expires_at: expires_in.map(|d| now + d),
         last_used_at: None,
@@ -608,12 +608,12 @@ fn load_repos_with_namespaces(store: &impl Store) -> anyhow::Result<Vec<RepoDisp
     Ok(repos_to_displays(all_repos, &namespace_map))
 }
 
-/// Load repo grants for a user with repo names
-fn load_user_repo_grants_with_names(
+/// Load repo grants for a principal with repo names
+fn load_principal_repo_grants_with_names(
     store: &impl Store,
-    user_id: &str,
+    principal_id: &str,
 ) -> anyhow::Result<Vec<RepoGrantDisplay>> {
-    let grants = store.list_user_repo_grants(user_id)?;
+    let grants = store.list_principal_repo_grants(principal_id)?;
     let mut displays = Vec::with_capacity(grants.len());
 
     for grant in grants {
@@ -657,12 +657,12 @@ pub fn pick_repo(store: &impl Store) -> anyhow::Result<Option<Repo>> {
     }
 }
 
-/// Pick a repo grant for a specific user
-pub fn pick_repo_grant(store: &impl Store, user_id: &str) -> anyhow::Result<Option<RepoGrant>> {
-    let grants = load_user_repo_grants_with_names(store, user_id)?;
+/// Pick a repo grant for a specific principal
+pub fn pick_repo_grant(store: &impl Store, principal_id: &str) -> anyhow::Result<Option<RepoGrant>> {
+    let grants = load_principal_repo_grants_with_names(store, principal_id)?;
 
     if grants.is_empty() {
-        println!("No repo grants found for this user.");
+        println!("No repo grants found for this principal.");
         return Ok(None);
     }
 

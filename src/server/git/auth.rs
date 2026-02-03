@@ -5,10 +5,10 @@ use axum::http::HeaderMap;
 use crate::auth::{TokenValidationError, extract_token_from_header, validate_token};
 use crate::server::AppState;
 use crate::server::user::access::{check_namespace_permission, check_repo_permission};
-use crate::types::{Namespace, Permission, Repo, Token, User};
+use crate::types::{Namespace, Permission, Principal, Repo, Token};
 
 pub struct GitAuth {
-    pub user: Option<User>,
+    pub principal: Option<Principal>,
     #[allow(dead_code)]
     pub token: Option<Token>,
 }
@@ -74,7 +74,7 @@ pub async fn extract_git_auth(
         Ok(Some(token)) => token,
         Ok(None) => {
             return Ok(GitAuth {
-                user: None,
+                principal: None,
                 token: None,
             });
         }
@@ -91,7 +91,7 @@ pub async fn extract_git_auth(
     })?;
 
     Ok(GitAuth {
-        user: validated.user,
+        principal: validated.principal,
         token: Some(validated.token),
     })
 }
@@ -105,30 +105,30 @@ pub fn check_git_access(
 ) -> Result<(), GitAuthError> {
     let is_public_read = !is_write && repo.is_some_and(|r| r.public);
 
-    let user = match &git_auth.user {
-        Some(u) => u,
+    let principal = match &git_auth.principal {
+        Some(p) => p,
         None if is_public_read => return Ok(()),
         None => return Err(GitAuthError::AuthRequired),
     };
 
     if is_write {
-        check_write_access(state, user, namespace, repo)
+        check_write_access(state, principal, namespace, repo)
     } else {
-        check_read_access(state, user, repo)
+        check_read_access(state, principal, repo)
     }
 }
 
 fn check_write_access(
     state: &Arc<AppState>,
-    user: &User,
+    principal: &Principal,
     namespace: &Namespace,
     repo: Option<&Repo>,
 ) -> Result<(), GitAuthError> {
     let has_permission = match repo {
-        Some(r) => check_repo_permission(state.store.as_ref(), user, r, Permission::REPO_WRITE),
+        Some(r) => check_repo_permission(state.store.as_ref(), principal, r, Permission::REPO_WRITE),
         None => check_namespace_permission(
             state.store.as_ref(),
-            user,
+            principal,
             &namespace.id,
             Permission::NAMESPACE_WRITE,
         ),
@@ -143,7 +143,7 @@ fn check_write_access(
 
 fn check_read_access(
     state: &Arc<AppState>,
-    user: &User,
+    principal: &Principal,
     repo: Option<&Repo>,
 ) -> Result<(), GitAuthError> {
     let r = repo.ok_or(GitAuthError::RepoNotFound)?;
@@ -152,7 +152,7 @@ fn check_read_access(
         return Ok(());
     }
 
-    let has_read = check_repo_permission(state.store.as_ref(), user, r, Permission::REPO_READ)
+    let has_read = check_repo_permission(state.store.as_ref(), principal, r, Permission::REPO_READ)
         .map_err(|_| GitAuthError::InternalError)?;
 
     if !has_read {

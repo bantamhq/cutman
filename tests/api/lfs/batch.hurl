@@ -1,7 +1,7 @@
 # LFS Batch API Tests
 
 # Batch download request - object doesn't exist
-POST {{base_url}}/git/{{user_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
+POST {{base_url}}/git/{{principal_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
 Authorization: {{git_auth_header}}
 Content-Type: application/vnd.git-lfs+json
 {
@@ -19,7 +19,7 @@ jsonpath "$.objects[0].error.code" == 404
 jsonpath "$.objects[0].error.message" == "Object not found"
 
 # Batch upload request - get upload action
-POST {{base_url}}/git/{{user_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
+POST {{base_url}}/git/{{principal_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
 Authorization: {{git_auth_header}}
 Content-Type: application/vnd.git-lfs+json
 {
@@ -36,7 +36,7 @@ jsonpath "$.objects[0].actions.upload.href" isString
 jsonpath "$.objects[0].actions.verify.href" isString
 
 # Batch with invalid operation
-POST {{base_url}}/git/{{user_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
+POST {{base_url}}/git/{{principal_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
 Authorization: {{git_auth_header}}
 Content-Type: application/vnd.git-lfs+json
 {
@@ -50,7 +50,7 @@ HTTP 400
 jsonpath "$.message" == "Invalid operation"
 
 # Batch with invalid OID format
-POST {{base_url}}/git/{{user_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
+POST {{base_url}}/git/{{principal_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
 Authorization: {{git_auth_header}}
 Content-Type: application/vnd.git-lfs+json
 {
@@ -65,7 +65,7 @@ jsonpath "$.objects[0].error.code" == 422
 jsonpath "$.objects[0].error.message" == "Invalid OID format"
 
 # Batch unauthorized - no token
-POST {{base_url}}/git/{{user_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
+POST {{base_url}}/git/{{principal_ns_name}}/{{repo_name}}.git/info/lfs/objects/batch
 Content-Type: application/vnd.git-lfs+json
 {
     "operation": "upload",
@@ -79,7 +79,7 @@ header "WWW-Authenticate" contains "Basic"
 jsonpath "$.message" == "Authentication required"
 
 # Batch on non-existent repo
-POST {{base_url}}/git/{{user_ns_name}}/nonexistent.git/info/lfs/objects/batch
+POST {{base_url}}/git/{{principal_ns_name}}/nonexistent.git/info/lfs/objects/batch
 Authorization: {{git_auth_header}}
 Content-Type: application/vnd.git-lfs+json
 {

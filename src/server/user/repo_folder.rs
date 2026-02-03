@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::auth::RequireUser;
+use crate::auth::RequirePrincipal;
 use crate::server::AppState;
 use crate::server::dto::SetRepoFolderRequest;
 use crate::server::response::{ApiError, ApiResponse, StoreOptionExt, StoreResultExt};
@@ -22,11 +22,11 @@ fn folder_to_vec(folder: Option<Folder>) -> Vec<Folder> {
 
 /// GET /repos/{id}/folders - Returns array of folders (0 or 1)
 pub async fn list_repo_folders(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -34,7 +34,7 @@ pub async fn list_repo_folders(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_READ)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_READ)?;
 
     let folder = match repo.folder_id {
         Some(folder_id) => store
@@ -48,12 +48,12 @@ pub async fn list_repo_folders(
 
 /// POST /repos/{id}/folders - Set the folder for a repo by path
 pub async fn set_repo_folder(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<SetRepoFolderRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -61,7 +61,7 @@ pub async fn set_repo_folder(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_WRITE)?;
 
     let normalized_path = match &req.folder_path {
         Some(path) => Some(normalize_path(path).map_err(|e| ApiError::bad_request(e.to_string()))?),
@@ -88,11 +88,11 @@ pub struct RepoFolderPath {
 
 /// DELETE /repos/{id}/folders/{folder_id} - Clear folder if it matches
 pub async fn clear_repo_folder(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(path): Path<RepoFolderPath>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let repo = store
@@ -100,7 +100,7 @@ pub async fn clear_repo_folder(
         .api_err("Failed to get repo")?
         .or_not_found("Repository not found")?;
 
-    require_repo_permission(store, user, &repo, Permission::REPO_WRITE)?;
+    require_repo_permission(store, principal, &repo, Permission::REPO_WRITE)?;
 
     match repo.folder_id {
         Some(current_folder_id) if current_folder_id == path.folder_id => {

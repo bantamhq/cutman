@@ -2,22 +2,22 @@
 
 # List repos - success
 GET {{base_url}}/api/v1/repos
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 jsonpath "$.has_more" isBoolean
 
 # List repos with namespace filter
-GET {{base_url}}/api/v1/repos?namespace={{user_ns_name}}
-Authorization: Bearer {{user_token}}
+GET {{base_url}}/api/v1/repos?namespace={{principal_ns_name}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 
 # Get specific repo - success
 GET {{base_url}}/api/v1/repos/{{repo_id}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.id" == {{repo_id}}
@@ -26,20 +26,20 @@ jsonpath "$.data.description" == "Test repository"
 
 # Get repo - not found
 GET {{base_url}}/api/v1/repos/00000000-0000-0000-0000-000000000000
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 404
 [Asserts]
 jsonpath "$.error" contains "not found"
 
 # Create repo - success
 POST {{base_url}}/api/v1/repos
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "name": "hurl-repo-{{test_suffix}}",
     "description": "A test repository",
     "public": true,
-    "namespace": "{{user_ns_name}}"
+    "namespace": "{{principal_ns_name}}"
 }
 HTTP 201
 [Asserts]
@@ -52,11 +52,11 @@ new_repo_id: jsonpath "$.data.id"
 
 # Create repo - conflict (duplicate name in same namespace)
 POST {{base_url}}/api/v1/repos
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "name": "hurl-repo-{{test_suffix}}",
-    "namespace": "{{user_ns_name}}"
+    "namespace": "{{principal_ns_name}}"
 }
 HTTP 409
 [Asserts]
@@ -64,11 +64,11 @@ jsonpath "$.error" contains "already exists"
 
 # Create repo - validation error (empty name)
 POST {{base_url}}/api/v1/repos
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "name": "",
-    "namespace": "{{user_ns_name}}"
+    "namespace": "{{principal_ns_name}}"
 }
 HTTP 400
 [Asserts]
@@ -76,11 +76,11 @@ jsonpath "$.error" contains "empty"
 
 # Create repo - validation error (invalid characters)
 POST {{base_url}}/api/v1/repos
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "name": "Invalid Repo Name!",
-    "namespace": "{{user_ns_name}}"
+    "namespace": "{{principal_ns_name}}"
 }
 HTTP 400
 [Asserts]
@@ -88,7 +88,7 @@ jsonpath "$.error" isString
 
 # Update repo - success
 PATCH {{base_url}}/api/v1/repos/{{new_repo_id}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "description": "Updated description",
@@ -101,7 +101,7 @@ jsonpath "$.data.public" == false
 
 # Update repo - rename
 PATCH {{base_url}}/api/v1/repos/{{new_repo_id}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "name": "hurl-repo-renamed-{{test_suffix}}"
@@ -112,12 +112,12 @@ jsonpath "$.data.name" == "hurl-repo-renamed-{{test_suffix}}"
 
 # Delete repo - success
 DELETE {{base_url}}/api/v1/repos/{{new_repo_id}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 204
 
 # Delete repo - not found
 DELETE {{base_url}}/api/v1/repos/00000000-0000-0000-0000-000000000000
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 404
 
 # Repos - unauthorized (no token)

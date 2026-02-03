@@ -9,7 +9,7 @@ use axum::{
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::auth::RequireUser;
+use crate::auth::RequirePrincipal;
 use crate::server::AppState;
 use crate::server::dto::{CreateTagRequest, DeleteTagParams, ListTagsParams, UpdateTagRequest};
 use crate::server::response::{
@@ -22,16 +22,16 @@ use super::access::{require_namespace_permission, resolve_namespace_id};
 use crate::server::validation::validate_tag_name;
 
 pub async fn list_tags(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListTagsParams>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
-    let ns_id = resolve_namespace_id(store, user, params.namespace.as_deref())?;
+    let ns_id = resolve_namespace_id(store, principal, params.namespace.as_deref())?;
     let cursor = params.cursor.as_deref().unwrap_or("");
 
-    require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_READ)?;
+    require_namespace_permission(store, principal, &ns_id, Permission::NAMESPACE_READ)?;
 
     let tags = store
         .list_tags(&ns_id, cursor, DEFAULT_PAGE_SIZE + 1)
@@ -44,15 +44,15 @@ pub async fn list_tags(
 }
 
 pub async fn create_tag(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateTagRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
-    let ns_id = resolve_namespace_id(store, user, req.namespace.as_deref())?;
+    let ns_id = resolve_namespace_id(store, principal, req.namespace.as_deref())?;
 
-    require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_WRITE)?;
+    require_namespace_permission(store, principal, &ns_id, Permission::NAMESPACE_WRITE)?;
 
     validate_tag_name(&req.name)?;
 
@@ -78,11 +78,11 @@ pub async fn create_tag(
 }
 
 pub async fn get_tag(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let tag = store
@@ -90,18 +90,18 @@ pub async fn get_tag(
         .api_err("Failed to get tag")?
         .or_not_found("Tag not found")?;
 
-    require_namespace_permission(store, user, &tag.namespace_id, Permission::NAMESPACE_READ)?;
+    require_namespace_permission(store, principal, &tag.namespace_id, Permission::NAMESPACE_READ)?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(tag)))
 }
 
 pub async fn update_tag(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<UpdateTagRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let mut tag = store
@@ -109,7 +109,7 @@ pub async fn update_tag(
         .api_err("Failed to get tag")?
         .or_not_found("Tag not found")?;
 
-    require_namespace_permission(store, user, &tag.namespace_id, Permission::NAMESPACE_WRITE)?;
+    require_namespace_permission(store, principal, &tag.namespace_id, Permission::NAMESPACE_WRITE)?;
 
     if let Some(name) = req.name {
         validate_tag_name(&name)?;
@@ -134,12 +134,12 @@ pub async fn update_tag(
 }
 
 pub async fn delete_tag(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<DeleteTagParams>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let tag = store
@@ -147,7 +147,7 @@ pub async fn delete_tag(
         .api_err("Failed to get tag")?
         .or_not_found("Tag not found")?;
 
-    require_namespace_permission(store, user, &tag.namespace_id, Permission::NAMESPACE_ADMIN)?;
+    require_namespace_permission(store, principal, &tag.namespace_id, Permission::NAMESPACE_ADMIN)?;
 
     let repo_count = store
         .count_tag_repos(&tag.id)

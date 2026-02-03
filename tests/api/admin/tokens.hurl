@@ -23,7 +23,7 @@ HTTP 404
 jsonpath "$.error" contains "not found"
 
 # Create a token to delete
-POST {{base_url}}/api/v1/admin/users/{{user_id}}/tokens
+POST {{base_url}}/api/v1/admin/principals/{{principal_id}}/tokens
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
@@ -49,5 +49,5 @@ HTTP 401
 
 # List tokens - forbidden (user token)
 GET {{base_url}}/api/v1/admin/tokens
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 403

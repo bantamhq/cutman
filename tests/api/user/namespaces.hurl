@@ -2,14 +2,14 @@
 
 # List accessible namespaces - success
 GET {{base_url}}/api/v1/namespaces
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 
 # List namespace grants - success
-GET {{base_url}}/api/v1/namespaces/{{user_ns_name}}/grants
-Authorization: Bearer {{user_token}}
+GET {{base_url}}/api/v1/namespaces/{{principal_ns_name}}/grants
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
@@ -25,8 +25,8 @@ HTTP 201
 [Captures]
 deletable_ns_id: jsonpath "$.data.id"
 
-# Grant user admin access to the namespace
-POST {{base_url}}/api/v1/admin/users/{{user_id}}/namespace-grants
+# Grant principal admin access to the namespace
+POST {{base_url}}/api/v1/admin/principals/{{principal_id}}/namespace-grants
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
@@ -37,7 +37,7 @@ HTTP 200
 
 # Update namespace - success (requires namespace:admin)
 PATCH {{base_url}}/api/v1/namespaces/hurl-ns-{{test_suffix}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "repo_limit": 200
@@ -48,7 +48,7 @@ jsonpath "$.data.repo_limit" == 200
 
 # Delete namespace - success (non-primary)
 DELETE {{base_url}}/api/v1/namespaces/hurl-ns-{{test_suffix}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 204
 
 # Namespaces - unauthorized (no token)

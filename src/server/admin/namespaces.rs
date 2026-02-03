@@ -110,14 +110,14 @@ pub async fn delete_namespace(
         ));
     }
 
-    let user_count = state
+    let principal_count = state
         .store
-        .count_namespace_users(&ns.id)
-        .map_err(|_| ApiError::internal("Failed to check users"))?;
+        .count_namespace_principals(&ns.id)
+        .map_err(|_| ApiError::internal("Failed to check principals"))?;
 
-    if user_count > 0 {
+    if principal_count > 0 {
         return Err(ApiError::conflict(
-            "Cannot delete namespace with user access",
+            "Cannot delete namespace with principal access",
         ));
     }
 

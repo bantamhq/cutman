@@ -1,7 +1,7 @@
 # Admin Grants API Tests
 
-# Create a test user for grant testing
-POST {{base_url}}/api/v1/admin/users
+# Create a test principal for grant testing
+POST {{base_url}}/api/v1/admin/principals
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
@@ -9,10 +9,10 @@ Content-Type: application/json
 }
 HTTP 201
 [Captures]
-grant_user_id: jsonpath "$.data.id"
+grant_principal_id: jsonpath "$.data.id"
 
 # Create namespace grant - success
-POST {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants
+POST {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
@@ -24,14 +24,14 @@ HTTP 200
 jsonpath "$.data" isCollection
 
 # List namespace grants - success
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants
 Authorization: Bearer {{admin_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 
 # Get specific namespace grant - success
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants/{{namespace_id}}
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants/{{namespace_id}}
 Authorization: Bearer {{admin_token}}
 HTTP 200
 [Asserts]
@@ -39,12 +39,12 @@ jsonpath "$.data.namespace_id" == {{namespace_id}}
 jsonpath "$.data.allow" isCollection
 
 # Get namespace grant - not found
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants/00000000-0000-0000-0000-000000000000
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{admin_token}}
 HTTP 404
 
 # Create namespace grant - invalid permissions
-POST {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants
+POST {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
@@ -54,7 +54,7 @@ Content-Type: application/json
 HTTP 400
 
 # Create repo grant - success
-POST {{base_url}}/api/v1/admin/users/{{grant_user_id}}/repo-grants
+POST {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/repo-grants
 Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 {
@@ -66,14 +66,14 @@ HTTP 200
 jsonpath "$.data" isCollection
 
 # List repo grants - success
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/repo-grants
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/repo-grants
 Authorization: Bearer {{admin_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 
 # Get specific repo grant - success
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/repo-grants/{{repo_id}}
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/repo-grants/{{repo_id}}
 Authorization: Bearer {{admin_token}}
 HTTP 200
 [Asserts]
@@ -81,30 +81,30 @@ jsonpath "$.data.repo_id" == {{repo_id}}
 jsonpath "$.data.allow" isCollection
 
 # Get repo grant - not found
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/repo-grants/00000000-0000-0000-0000-000000000000
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/repo-grants/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{admin_token}}
 HTTP 404
 
 # Delete repo grant - success
-DELETE {{base_url}}/api/v1/admin/users/{{grant_user_id}}/repo-grants/{{repo_id}}
+DELETE {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/repo-grants/{{repo_id}}
 Authorization: Bearer {{admin_token}}
 HTTP 204
 
 # Delete namespace grant - success
-DELETE {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants/{{namespace_id}}
+DELETE {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants/{{namespace_id}}
 Authorization: Bearer {{admin_token}}
 HTTP 204
 
 # Grants - unauthorized (no token)
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants
 HTTP 401
 
-# Grants - forbidden (user token)
-GET {{base_url}}/api/v1/admin/users/{{grant_user_id}}/namespace-grants
-Authorization: Bearer {{user_token}}
+# Grants - forbidden (principal token)
+GET {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}/namespace-grants
+Authorization: Bearer {{principal_token}}
 HTTP 403
 
-# Clean up test user
-DELETE {{base_url}}/api/v1/admin/users/{{grant_user_id}}
+# Clean up test principal
+DELETE {{base_url}}/api/v1/admin/principals/{{grant_principal_id}}
 Authorization: Bearer {{admin_token}}
 HTTP 204

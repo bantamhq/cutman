@@ -24,71 +24,74 @@ fn git_available() -> bool {
     ProcessCommand::new("git").arg("--version").output().is_ok()
 }
 
-struct UserSetup {
-    user_ns_id: String,
-    user_ns_name: String,
-    user_token: String,
+struct PrincipalSetup {
+    principal_ns_id: String,
+    principal_ns_name: String,
+    principal_token: String,
 }
 
-async fn create_user_and_token(
+async fn create_principal_and_token(
     client: &Client,
     base_url: &str,
     admin_token: &str,
     namespace_name: &str,
-) -> UserSetup {
+) -> PrincipalSetup {
     let resp: Value = client
-        .post(format!("{}/api/v1/admin/users", base_url))
+        .post(format!("{}/api/v1/admin/principals", base_url))
         .bearer_auth(admin_token)
         .json(&serde_json::json!({"namespace_name": namespace_name}))
         .send()
         .await
-        .expect("create user")
+        .expect("create principal")
         .json()
         .await
-        .expect("parse user response");
+        .expect("parse principal response");
 
-    let user_id = resp["data"]["id"].as_str().expect("user id").to_string();
-    let user_ns_id = resp["data"]["primary_namespace_id"]
+    let principal_id = resp["data"]["id"]
         .as_str()
-        .expect("user namespace id")
+        .expect("principal id")
+        .to_string();
+    let principal_ns_id = resp["data"]["primary_namespace_id"]
+        .as_str()
+        .expect("principal namespace id")
         .to_string();
 
     let token_resp: Value = client
         .post(format!(
-            "{}/api/v1/admin/users/{}/tokens",
-            base_url, user_id
+            "{}/api/v1/admin/principals/{}/tokens",
+            base_url, principal_id
         ))
         .bearer_auth(admin_token)
         .json(&serde_json::json!({"description": "CLI test token"}))
         .send()
         .await
-        .expect("create user token")
+        .expect("create principal token")
         .json()
         .await
         .expect("parse token response");
 
-    let user_token = token_resp["data"]["token"]
+    let principal_token = token_resp["data"]["token"]
         .as_str()
-        .expect("user token")
+        .expect("principal token")
         .to_string();
 
-    UserSetup {
-        user_ns_id,
-        user_ns_name: namespace_name.to_string(),
-        user_token,
+    PrincipalSetup {
+        principal_ns_id,
+        principal_ns_name: namespace_name.to_string(),
+        principal_token,
     }
 }
 
 async fn create_repo(
     client: &Client,
     base_url: &str,
-    user_token: &str,
+    principal_token: &str,
     repo_name: &str,
     namespace: &str,
 ) -> String {
     let resp: Value = client
         .post(format!("{}/api/v1/repos", base_url))
-        .bearer_auth(user_token)
+        .bearer_auth(principal_token)
         .json(&serde_json::json!({
             "name": repo_name,
             "namespace": namespace,
@@ -106,13 +109,13 @@ async fn create_repo(
 async fn create_tag(
     client: &Client,
     base_url: &str,
-    user_token: &str,
+    principal_token: &str,
     tag_name: &str,
     namespace: &str,
 ) -> String {
     let resp: Value = client
         .post(format!("{}/api/v1/tags", base_url))
-        .bearer_auth(user_token)
+        .bearer_auth(principal_token)
         .json(&serde_json::json!({
             "name": tag_name,
             "namespace": namespace,
@@ -130,12 +133,12 @@ async fn create_tag(
 async fn list_repo_tag_ids(
     client: &Client,
     base_url: &str,
-    user_token: &str,
+    principal_token: &str,
     repo_id: &str,
 ) -> Vec<String> {
     let resp: Value = client
         .get(format!("{}/api/v1/repos/{}/tags", base_url, repo_id))
-        .bearer_auth(user_token)
+        .bearer_auth(principal_token)
         .send()
         .await
         .expect("list repo tags")
@@ -209,8 +212,9 @@ async fn auth_login_and_credential_helper_roundtrip() {
     let server = TestServer::start().await;
     let client = Client::new();
 
-    let user =
-        create_user_and_token(&client, &server.base_url, &server.admin_token, "cli-user").await;
+    let principal =
+        create_principal_and_token(&client, &server.base_url, &server.admin_token, "cli-user")
+            .await;
 
     let config_dir = TempDir::new().expect("failed to create temp dir");
 
@@ -221,7 +225,7 @@ async fn auth_login_and_credential_helper_roundtrip() {
             "--server",
             &server.base_url,
             "--token",
-            &user.user_token,
+            &principal.principal_token,
             "--non-interactive",
         ])
         .assert()
@@ -242,7 +246,7 @@ async fn auth_login_and_credential_helper_roundtrip() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("username=cutman"));
-    assert!(stdout.contains(&format!("password={}", user.user_token)));
+    assert!(stdout.contains(&format!("password={}", principal.principal_token)));
 
     let output = cli_cmd(&config_dir)
         .args(["credential", "get"])
@@ -273,7 +277,7 @@ async fn auth_login_and_credential_helper_roundtrip() {
             "--server",
             &server.base_url,
             "--token",
-            &user.user_token,
+            &principal.principal_token,
             "--non-interactive",
         ])
         .assert()
@@ -291,7 +295,7 @@ async fn repo_tag_and_delete_flow() {
     let server = TestServer::start().await;
     let client = Client::new();
 
-    let user = create_user_and_token(
+    let principal = create_principal_and_token(
         &client,
         &server.base_url,
         &server.admin_token,
@@ -308,7 +312,7 @@ async fn repo_tag_and_delete_flow() {
             "--server",
             &server.base_url,
             "--token",
-            &user.user_token,
+            &principal.principal_token,
             "--non-interactive",
         ])
         .assert()
@@ -318,12 +322,12 @@ async fn repo_tag_and_delete_flow() {
     let repo_id = create_repo(
         &client,
         &server.base_url,
-        &user.user_token,
+        &principal.principal_token,
         repo_name,
-        &user.user_ns_name,
+        &principal.principal_ns_name,
     )
     .await;
-    let repo_ref = format!("{}/{}", user.user_ns_name, repo_name);
+    let repo_ref = format!("{}/{}", principal.principal_ns_name, repo_name);
 
     cli_cmd(&config_dir)
         .args(["repo", "tag", "--non-interactive", &repo_ref])
@@ -334,17 +338,17 @@ async fn repo_tag_and_delete_flow() {
     let tag_a = create_tag(
         &client,
         &server.base_url,
-        &user.user_token,
+        &principal.principal_token,
         "cli-tag-a",
-        &user.user_ns_name,
+        &principal.principal_ns_name,
     )
     .await;
     let tag_b = create_tag(
         &client,
         &server.base_url,
-        &user.user_token,
+        &principal.principal_token,
         "cli-tag-b",
-        &user.user_ns_name,
+        &principal.principal_ns_name,
     )
     .await;
 
@@ -362,7 +366,7 @@ async fn repo_tag_and_delete_flow() {
         .success();
 
     let mut tag_ids =
-        list_repo_tag_ids(&client, &server.base_url, &user.user_token, &repo_id).await;
+        list_repo_tag_ids(&client, &server.base_url, &principal.principal_token, &repo_id).await;
     tag_ids.sort();
     let mut expected = vec![tag_a.clone(), tag_b.clone()];
     expected.sort();
@@ -381,7 +385,7 @@ async fn repo_tag_and_delete_flow() {
 
     let resp = client
         .get(format!("{}/api/v1/repos/{}", server.base_url, repo_id))
-        .bearer_auth(&user.user_token)
+        .bearer_auth(&principal.principal_token)
         .send()
         .await
         .expect("check repo deleted");
@@ -393,7 +397,7 @@ async fn tag_create_and_delete_flow() {
     let server = TestServer::start().await;
     let client = Client::new();
 
-    let user = create_user_and_token(
+    let principal = create_principal_and_token(
         &client,
         &server.base_url,
         &server.admin_token,
@@ -410,7 +414,7 @@ async fn tag_create_and_delete_flow() {
             "--server",
             &server.base_url,
             "--token",
-            &user.user_token,
+            &principal.principal_token,
             "--non-interactive",
         ])
         .assert()
@@ -429,7 +433,7 @@ async fn tag_create_and_delete_flow() {
             "--name",
             "cli-tag",
             "--namespace",
-            &user.user_ns_name,
+            &principal.principal_ns_name,
             "--non-interactive",
         ])
         .assert()
@@ -438,9 +442,9 @@ async fn tag_create_and_delete_flow() {
     let tags_resp: Value = client
         .get(format!(
             "{}/api/v1/tags?namespace={}",
-            server.base_url, user.user_ns_name
+            server.base_url, principal.principal_ns_name
         ))
-        .bearer_auth(&user.user_token)
+        .bearer_auth(&principal.principal_token)
         .send()
         .await
         .expect("list tags")
@@ -471,7 +475,7 @@ async fn tag_create_and_delete_flow() {
 
     let resp = client
         .get(format!("{}/api/v1/tags/{}", server.base_url, tag_id))
-        .bearer_auth(&user.user_token)
+        .bearer_auth(&principal.principal_token)
         .send()
         .await
         .expect("check tag deleted");
@@ -488,7 +492,7 @@ async fn repo_clone_clones_bare_repo() {
     let server = TestServer::start().await;
     let client = Client::new();
 
-    let user = create_user_and_token(
+    let principal = create_principal_and_token(
         &client,
         &server.base_url,
         &server.admin_token,
@@ -505,7 +509,7 @@ async fn repo_clone_clones_bare_repo() {
             "--server",
             &server.base_url,
             "--token",
-            &user.user_token,
+            &principal.principal_token,
             "--non-interactive",
         ])
         .assert()
@@ -515,16 +519,16 @@ async fn repo_clone_clones_bare_repo() {
     let _repo_id = create_repo(
         &client,
         &server.base_url,
-        &user.user_token,
+        &principal.principal_token,
         repo_name,
-        &user.user_ns_name,
+        &principal.principal_ns_name,
     )
     .await;
 
     let bare_repo_path = server
         .data_dir()
         .join("repos")
-        .join(&user.user_ns_id)
+        .join(&principal.principal_ns_id)
         .join(format!("{repo_name}.git"));
     std::fs::create_dir_all(bare_repo_path.parent().expect("bare repo parent"))
         .expect("create bare repo parent");
@@ -538,7 +542,7 @@ async fn repo_clone_clones_bare_repo() {
     std::fs::write(bare_repo_path.join("HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
 
     let work_dir = TempDir::new().expect("failed to create temp dir");
-    let repo_ref = format!("{}/{}", user.user_ns_name, repo_name);
+    let repo_ref = format!("{}/{}", principal.principal_ns_name, repo_name);
 
     cli_cmd(&config_dir)
         .current_dir(work_dir.path())

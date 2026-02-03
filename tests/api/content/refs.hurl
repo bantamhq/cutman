@@ -2,14 +2,14 @@
 
 # List refs - success
 GET {{base_url}}/api/v1/repos/{{repo_id}}/refs
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data" isCollection
 
 # List refs - not found (invalid repo)
 GET {{base_url}}/api/v1/repos/00000000-0000-0000-0000-000000000000/refs
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 404
 
 # Refs - unauthorized (private repo, no token)

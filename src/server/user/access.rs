@@ -1,21 +1,21 @@
 use crate::server::response::{ApiError, StoreResultExt};
 use crate::store::Store;
-use crate::types::{Permission, Repo, User};
+use crate::types::{Permission, Principal, Repo};
 
-/// Returns true if user has the required permission for a namespace.
+/// Returns true if principal has the required permission for a namespace.
 /// Primary namespace owners have full access.
 pub fn check_namespace_permission(
     store: &dyn Store,
-    user: &User,
+    principal: &Principal,
     namespace_id: &str,
     required: Permission,
 ) -> Result<bool, ApiError> {
-    if user.primary_namespace_id == namespace_id {
+    if principal.primary_namespace_id == namespace_id {
         return Ok(true);
     }
 
     let grant = store
-        .get_namespace_grant(&user.id, namespace_id)
+        .get_namespace_grant(&principal.id, namespace_id)
         .api_err("Failed to check namespace grant")?;
 
     Ok(grant
@@ -28,24 +28,24 @@ pub fn check_namespace_permission(
         .unwrap_or(false))
 }
 
-/// Returns true if user has the required permission for a repo.
+/// Returns true if principal has the required permission for a repo.
 /// Checks both namespace-level and repo-level grants.
 pub fn check_repo_permission(
     store: &dyn Store,
-    user: &User,
+    principal: &Principal,
     repo: &Repo,
     required: Permission,
 ) -> Result<bool, ApiError> {
-    if user.primary_namespace_id == repo.namespace_id {
+    if principal.primary_namespace_id == repo.namespace_id {
         return Ok(true);
     }
 
     let ns_grant = store
-        .get_namespace_grant(&user.id, &repo.namespace_id)
+        .get_namespace_grant(&principal.id, &repo.namespace_id)
         .api_err("Failed to check namespace grant")?;
 
     let repo_grant = store
-        .get_repo_grant(&user.id, &repo.id)
+        .get_repo_grant(&principal.id, &repo.id)
         .api_err("Failed to check repo grant")?;
 
     let mut allow = Permission::default();
@@ -64,10 +64,10 @@ pub fn check_repo_permission(
     Ok(allow.difference(deny).has(required))
 }
 
-/// Resolves namespace from optional name or uses user's primary namespace.
+/// Resolves namespace from optional name or uses principal's primary namespace.
 pub fn resolve_namespace_id(
     store: &dyn Store,
-    user: &User,
+    principal: &Principal,
     namespace_name: Option<&str>,
 ) -> Result<String, ApiError> {
     match namespace_name {
@@ -78,31 +78,31 @@ pub fn resolve_namespace_id(
                 .ok_or_else(|| ApiError::not_found("Namespace not found"))?;
             Ok(ns.id)
         }
-        None => Ok(user.primary_namespace_id.clone()),
+        None => Ok(principal.primary_namespace_id.clone()),
     }
 }
 
-/// Check if user has the required namespace permission, returning forbidden error if not.
+/// Check if principal has the required namespace permission, returning forbidden error if not.
 pub fn require_namespace_permission(
     store: &dyn Store,
-    user: &User,
+    principal: &Principal,
     namespace_id: &str,
     required: Permission,
 ) -> Result<(), ApiError> {
-    if !check_namespace_permission(store, user, namespace_id, required)? {
+    if !check_namespace_permission(store, principal, namespace_id, required)? {
         return Err(ApiError::forbidden("Insufficient namespace permissions"));
     }
     Ok(())
 }
 
-/// Check if user has the required repo permission, returning forbidden error if not.
+/// Check if principal has the required repo permission, returning forbidden error if not.
 pub fn require_repo_permission(
     store: &dyn Store,
-    user: &User,
+    principal: &Principal,
     repo: &Repo,
     required: Permission,
 ) -> Result<(), ApiError> {
-    if !check_repo_permission(store, user, repo, required)? {
+    if !check_repo_permission(store, principal, repo, required)? {
         return Err(ApiError::forbidden("Insufficient repository permissions"));
     }
     Ok(())

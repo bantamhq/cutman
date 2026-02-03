@@ -6,11 +6,11 @@
 
 # Create an empty repo
 POST {{base_url}}/api/v1/repos
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "name": "empty-repo-{{test_suffix}}",
-    "namespace": "{{user_ns_name}}"
+    "namespace": "{{principal_ns_name}}"
 }
 HTTP 201
 [Captures]
@@ -18,7 +18,7 @@ empty_repo_id: jsonpath "$.data.id"
 
 # Create first file in empty repo using multi-commit endpoint
 POST {{base_url}}/api/v1/repos/{{empty_repo_id}}/commits
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Initial commit",
@@ -37,14 +37,14 @@ jsonpath "$.data.ref_name" == "main"
 
 # Verify the file was created
 GET {{base_url}}/api/v1/repos/{{empty_repo_id}}/blob/main/README.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.content" contains "Empty Repo Test"
 
 # Clean up
 DELETE {{base_url}}/api/v1/repos/{{empty_repo_id}}
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 204
 
 # ============================================================================
@@ -53,7 +53,7 @@ HTTP 204
 
 # Create a new file - success
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/new-file.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Create new file",
@@ -71,7 +71,7 @@ new_file_sha: jsonpath "$.data.file.sha"
 
 # Create file that already exists - conflict without sha
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/new-file.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Create duplicate file",
@@ -83,7 +83,7 @@ jsonpath "$.error" contains "already exists"
 
 # Update file with correct sha - success
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/new-file.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Update existing file",
@@ -99,7 +99,7 @@ updated_file_sha: jsonpath "$.data.file.sha"
 
 # Update file with wrong sha - conflict
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/new-file.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Update with wrong sha",
@@ -112,7 +112,7 @@ jsonpath "$.error" contains "modified"
 
 # Create nested file - success
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/docs/guide/intro.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Create nested file",
@@ -124,7 +124,7 @@ jsonpath "$.data.file.path" == "docs/guide/intro.md"
 
 # Create file with base64 encoding - success
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/binary-test.bin
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Create binary file",
@@ -152,7 +152,7 @@ HTTP 401
 
 # Delete file - success
 DELETE {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/binary-test.bin
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Delete binary file",
@@ -165,7 +165,7 @@ jsonpath "$.data.ref_name" == "main"
 
 # Delete file with wrong sha - conflict
 DELETE {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/new-file.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Delete with wrong sha",
@@ -175,7 +175,7 @@ HTTP 409
 
 # Delete nonexistent file - not found
 DELETE {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/nonexistent.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Delete nonexistent",
@@ -198,7 +198,7 @@ HTTP 401
 
 # Multi-file commit - success
 POST {{base_url}}/api/v1/repos/{{repo_id}}/commits
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Multi-file commit",
@@ -222,7 +222,7 @@ jsonpath "$.data.ref_name" == "main"
 
 # Multi-file commit with update - success
 POST {{base_url}}/api/v1/repos/{{repo_id}}/commits
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Update and create",
@@ -243,7 +243,7 @@ HTTP 201
 
 # Multi-file commit - empty actions
 POST {{base_url}}/api/v1/repos/{{repo_id}}/commits
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Empty commit",
@@ -274,7 +274,7 @@ HTTP 401
 
 # Get blob with history
 GET {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/README.md?history=true
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.sha" isString
@@ -283,7 +283,7 @@ jsonpath "$.data.history_has_more" isBoolean
 
 # Get blob with parsed frontmatter
 PUT {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/with-frontmatter.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 Content-Type: application/json
 {
     "message": "Create file with frontmatter",
@@ -292,7 +292,7 @@ Content-Type: application/json
 HTTP 201
 
 GET {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/with-frontmatter.md?parsed=true
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.sha" isString
@@ -303,7 +303,7 @@ jsonpath "$.data.body" contains "Test Post"
 
 # Get blob with both history and parsed
 GET {{base_url}}/api/v1/repos/{{repo_id}}/blob/main/with-frontmatter.md?history=true&parsed=true
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.frontmatter" exists
@@ -316,21 +316,21 @@ jsonpath "$.data.history" isCollection
 
 # Search paths - success
 GET {{base_url}}/api/v1/repos/{{repo_id}}/search?q=*.md
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.matches" isCollection
 
 # Search paths - with ref
 GET {{base_url}}/api/v1/repos/{{repo_id}}/search?q=src/*&ref=main
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.matches" isCollection
 
 # Search paths - with limit
 GET {{base_url}}/api/v1/repos/{{repo_id}}/search?q=*&limit=5
-Authorization: Bearer {{user_token}}
+Authorization: Bearer {{principal_token}}
 HTTP 200
 [Asserts]
 jsonpath "$.data.matches" isCollection

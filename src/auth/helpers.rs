@@ -4,7 +4,7 @@ use chrono::Utc;
 
 use super::{TokenGenerator, parse_token};
 use crate::server::AppState;
-use crate::types::{Token, User};
+use crate::types::{Principal, Token};
 
 #[derive(Debug)]
 pub enum TokenValidationError {
@@ -17,7 +17,7 @@ pub enum TokenValidationError {
 
 pub struct ValidatedToken {
     pub token: Token,
-    pub user: Option<User>,
+    pub principal: Option<Principal>,
 }
 
 /// Extracts a token string from a Basic auth header.
@@ -74,10 +74,10 @@ pub fn validate_token(
         return Err(TokenValidationError::AdminTokenNotAllowed);
     }
 
-    let user = match &token.user_id {
-        Some(user_id) => state
+    let principal = match &token.principal_id {
+        Some(principal_id) => state
             .store
-            .get_user(user_id)
+            .get_principal(principal_id)
             .map_err(|_| TokenValidationError::InternalError)?,
         None => None,
     };
@@ -86,7 +86,7 @@ pub fn validate_token(
         tracing::warn!("Failed to update token last_used_at: {e}");
     }
 
-    Ok(ValidatedToken { token, user })
+    Ok(ValidatedToken { token, principal })
 }
 
 /// Extracts token from Authorization header (Bearer or Basic).

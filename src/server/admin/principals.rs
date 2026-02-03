@@ -12,20 +12,21 @@ use uuid::Uuid;
 use crate::auth::{RequireAdmin, TokenGenerator};
 use crate::server::AppState;
 use crate::server::dto::{
-    CreateTokenResponse, CreateUserRequest, CreateUserTokenRequest, PaginationParams, TokenResponse,
+    CreatePrincipalRequest, CreatePrincipalTokenRequest, CreateTokenResponse, PaginationParams,
+    TokenResponse,
 };
 use crate::server::response::{
     ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, paginate,
 };
 use crate::server::validation::validate_namespace_name;
-use crate::types::{Namespace, NamespaceGrant, Permission, Token, User};
+use crate::types::{Namespace, NamespaceGrant, Permission, Principal, Token};
 
 use super::tokens::token_to_response;
 
-pub async fn create_user(
+pub async fn create_principal(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
-    Json(req): Json<CreateUserRequest>,
+    Json(req): Json<CreatePrincipalRequest>,
 ) -> impl IntoResponse {
     if let Err(e) = validate_namespace_name(&req.namespace_name) {
         return Err(ApiError::bad_request(e));
@@ -51,17 +52,19 @@ pub async fn create_user(
         Err(_) => return Err(ApiError::internal("Failed to check namespace")),
     };
 
-    let existing_user = state
+    let existing_principal = state
         .store
-        .get_user_by_primary_namespace_id(&ns.id)
-        .map_err(|_| ApiError::internal("Failed to check existing user"))?;
+        .get_principal_by_primary_namespace_id(&ns.id)
+        .map_err(|_| ApiError::internal("Failed to check existing principal"))?;
 
-    if existing_user.is_some() {
-        return Err(ApiError::conflict("User already exists for this namespace"));
+    if existing_principal.is_some() {
+        return Err(ApiError::conflict(
+            "Principal already exists for this namespace",
+        ));
     }
 
     let now = Utc::now();
-    let user = User {
+    let principal = Principal {
         id: Uuid::new_v4().to_string(),
         primary_namespace_id: ns.id.clone(),
         created_at: now,
@@ -70,11 +73,11 @@ pub async fn create_user(
 
     state
         .store
-        .create_user(&user)
-        .map_err(|_| ApiError::internal("Failed to create user"))?;
+        .create_principal(&principal)
+        .map_err(|_| ApiError::internal("Failed to create principal"))?;
 
     let grant = NamespaceGrant {
-        user_id: user.id.clone(),
+        principal_id: principal.id.clone(),
         namespace_id: ns.id,
         allow_bits: Permission::default_namespace_grant(),
         deny_bits: Permission::default(),
@@ -87,75 +90,79 @@ pub async fn create_user(
         .upsert_namespace_grant(&grant)
         .map_err(|_| ApiError::internal("Failed to create grant"))?;
 
-    Ok((StatusCode::CREATED, Json(ApiResponse::success(user))))
+    Ok((StatusCode::CREATED, Json(ApiResponse::success(principal))))
 }
 
-pub async fn list_users(
+pub async fn list_principals(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
 ) -> impl IntoResponse {
     let cursor = params.cursor.as_deref().unwrap_or("");
 
-    let users = state
+    let principals = state
         .store
-        .list_users(cursor, DEFAULT_PAGE_SIZE + 1)
-        .map_err(|_| ApiError::internal("Failed to list users"))?;
+        .list_principals(cursor, DEFAULT_PAGE_SIZE + 1)
+        .map_err(|_| ApiError::internal("Failed to list principals"))?;
 
-    let (users, next_cursor, has_more) =
-        paginate(users, DEFAULT_PAGE_SIZE as usize, |u| u.id.clone());
+    let (principals, next_cursor, has_more) =
+        paginate(principals, DEFAULT_PAGE_SIZE as usize, |p| p.id.clone());
 
-    Ok::<_, ApiError>(Json(PaginatedResponse::new(users, next_cursor, has_more)))
+    Ok::<_, ApiError>(Json(PaginatedResponse::new(
+        principals,
+        next_cursor,
+        has_more,
+    )))
 }
 
-pub async fn get_user(
+pub async fn get_principal(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
-    Ok::<_, ApiError>(Json(ApiResponse::success(user)))
+    Ok::<_, ApiError>(Json(ApiResponse::success(principal)))
 }
 
-pub async fn delete_user(
+pub async fn delete_principal(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     state
         .store
-        .delete_user(&user.id)
-        .map_err(|_| ApiError::internal("Failed to delete user"))?;
+        .delete_principal(&principal.id)
+        .map_err(|_| ApiError::internal("Failed to delete principal"))?;
 
     Ok::<_, ApiError>(StatusCode::NO_CONTENT)
 }
 
-pub async fn list_user_tokens(
+pub async fn list_principal_tokens(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     let tokens = state
         .store
-        .list_user_tokens(&user.id)
-        .map_err(|_| ApiError::internal("Failed to list user tokens"))?;
+        .list_principal_tokens(&principal.id)
+        .map_err(|_| ApiError::internal("Failed to list principal tokens"))?;
 
     let responses: Vec<TokenResponse> = tokens
         .into_iter()
@@ -165,17 +172,17 @@ pub async fn list_user_tokens(
     Ok::<_, ApiError>(Json(ApiResponse::success(responses)))
 }
 
-pub async fn create_user_token(
+pub async fn create_principal_token(
     _admin: RequireAdmin,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(req): Json<CreateUserTokenRequest>,
+    Json(req): Json<CreatePrincipalTokenRequest>,
 ) -> impl IntoResponse {
-    let user = state
+    let principal = state
         .store
-        .get_user(&id)
-        .map_err(|_| ApiError::internal("Failed to get user"))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
+        .get_principal(&id)
+        .map_err(|_| ApiError::internal("Failed to get principal"))?
+        .ok_or_else(|| ApiError::not_found("Principal not found"))?;
 
     if let Some(seconds) = req.expires_in_seconds {
         if seconds < 0 {
@@ -203,7 +210,7 @@ pub async fn create_user_token(
             token_hash: hash,
             token_lookup: lookup,
             is_admin: false,
-            user_id: Some(user.id.clone()),
+            principal_id: Some(principal.id.clone()),
             created_at: now,
             expires_at,
             last_used_at: None,

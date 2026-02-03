@@ -70,16 +70,16 @@ impl TestContext {
         serde_json::from_slice(&output.stdout).expect("failed to parse JSON")
     }
 
-    fn remove_user(&self, user_id: &str) -> assert_cmd::assert::Assert {
+    fn remove_principal(&self, principal_id: &str) -> assert_cmd::assert::Assert {
         self.cmd()
             .args([
                 "admin",
-                "user",
+                "principal",
                 "remove",
                 "--data-dir",
                 &self.data_dir_str(),
-                "--user-id",
-                user_id,
+                "--principal-id",
+                principal_id,
                 "--non-interactive",
                 "--yes",
             ])
@@ -112,11 +112,11 @@ fn find_id_by_field<'a>(items: &'a [Value], field: &str, value: &str) -> &'a str
         .expect("id not a string")
 }
 
-fn add_user(ctx: &TestContext, username: &str) -> String {
+fn add_principal(ctx: &TestContext, username: &str) -> String {
     ctx.cmd()
         .args([
             "admin",
-            "user",
+            "principal",
             "add",
             "--data-dir",
             &ctx.data_dir_str(),
@@ -127,13 +127,15 @@ fn add_user(ctx: &TestContext, username: &str) -> String {
         .assert()
         .success();
 
-    get_user_id(ctx, username)
+    get_principal_id(ctx, username)
 }
 
-fn get_user_id(ctx: &TestContext, username: &str) -> String {
+fn get_principal_id(ctx: &TestContext, username: &str) -> String {
     let info = ctx.info_json();
-    let users = info["users"].as_array().expect("users not an array");
-    find_id_by_field(users, "username", username).to_string()
+    let principals = info["principals"]
+        .as_array()
+        .expect("principals not an array");
+    find_id_by_field(principals, "username", username).to_string()
 }
 
 fn add_namespace(ctx: &TestContext, name: &str) -> String {
@@ -162,7 +164,7 @@ fn get_namespace_id(ctx: &TestContext, name: &str) -> String {
     find_id_by_field(namespaces, "name", name).to_string()
 }
 
-fn create_token(ctx: &TestContext, user_id: &str) -> String {
+fn create_token(ctx: &TestContext, principal_id: &str) -> String {
     ctx.cmd()
         .args([
             "admin",
@@ -170,8 +172,8 @@ fn create_token(ctx: &TestContext, user_id: &str) -> String {
             "create",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            user_id,
+            "--principal-id",
+            principal_id,
             "--non-interactive",
         ])
         .assert()
@@ -179,13 +181,13 @@ fn create_token(ctx: &TestContext, user_id: &str) -> String {
 
     let info = ctx.info_json();
     let tokens = info["tokens"].as_array().expect("tokens not an array");
-    find_last_token_for_user(tokens, user_id)["id"]
+    find_last_token_for_principal(tokens, principal_id)["id"]
         .as_str()
         .expect("id not a string")
         .to_string()
 }
 
-fn grant_permission(ctx: &TestContext, user_id: &str, namespace_id: &str, perms: &str) {
+fn grant_permission(ctx: &TestContext, principal_id: &str, namespace_id: &str, perms: &str) {
     ctx.cmd()
         .args([
             "admin",
@@ -193,8 +195,8 @@ fn grant_permission(ctx: &TestContext, user_id: &str, namespace_id: &str, perms:
             "grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            user_id,
+            "--principal-id",
+            principal_id,
             "--namespace-id",
             namespace_id,
             "--permissions",
@@ -221,11 +223,11 @@ fn list_grants_json(ctx: &TestContext) -> Vec<Value> {
         .clone()
 }
 
-fn list_users_json(ctx: &TestContext) -> Vec<Value> {
+fn list_principals_json(ctx: &TestContext) -> Vec<Value> {
     let info = ctx.info_json();
-    info["users"]
+    info["principals"]
         .as_array()
-        .expect("users not an array")
+        .expect("principals not an array")
         .clone()
 }
 
@@ -237,10 +239,10 @@ fn list_namespaces_json(ctx: &TestContext) -> Vec<Value> {
         .clone()
 }
 
-fn find_last_token_for_user<'a>(tokens: &'a [Value], user_id: &str) -> &'a Value {
+fn find_last_token_for_principal<'a>(tokens: &'a [Value], principal_id: &str) -> &'a Value {
     tokens
         .iter()
-        .rfind(|t| t["user_id"].as_str() == Some(user_id))
+        .rfind(|t| t["principal_id"].as_str() == Some(principal_id))
         .expect("token not found")
 }
 
@@ -297,86 +299,87 @@ fn init_rejects_second_initialization_with_existing_database() {
 }
 
 #[test]
-fn init_preserves_existing_users_when_reinitialization_rejected() {
+fn init_preserves_existing_principals_when_reinitialization_rejected() {
     let ctx = TestContext::new();
 
     ctx.init().success();
-    add_user(&ctx, "testuser");
+    add_principal(&ctx, "testuser");
 
     ctx.init().failure();
 
-    let users = list_users_json(&ctx);
-    assert!(users.iter().any(|u| u["username"] == "testuser"));
+    let principals = list_principals_json(&ctx);
+    assert!(principals.iter().any(|u| u["username"] == "testuser"));
 }
 
 // ============================================================================
-// User Cascading Deletion Tests
+// Principal Cascading Deletion Tests
 // ============================================================================
 
 #[test]
-fn user_remove_deletes_all_tokens_belonging_to_user() {
+fn principal_remove_deletes_all_tokens_belonging_to_principal() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "alice");
-    create_token(&ctx, &user_id);
-    create_token(&ctx, &user_id);
+    let principal_id = add_principal(&ctx, "alice");
+    create_token(&ctx, &principal_id);
+    create_token(&ctx, &principal_id);
 
-    let count_user_tokens = |tokens: &[Value]| {
+    let count_principal_tokens = |tokens: &[Value]| {
         tokens
             .iter()
-            .filter(|t| t["user_id"].as_str() == Some(&user_id))
+            .filter(|t| t["principal_id"].as_str() == Some(&principal_id))
             .count()
     };
 
-    assert_eq!(count_user_tokens(&list_tokens_json(&ctx)), 2);
+    assert_eq!(count_principal_tokens(&list_tokens_json(&ctx)), 2);
 
-    ctx.remove_user(&user_id).success();
+    ctx.remove_principal(&principal_id).success();
 
-    assert_eq!(count_user_tokens(&list_tokens_json(&ctx)), 0);
+    assert_eq!(count_principal_tokens(&list_tokens_json(&ctx)), 0);
 }
 
 #[test]
-fn user_remove_deletes_all_namespace_grants_for_user() {
+fn principal_remove_deletes_all_namespace_grants_for_principal() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "bob");
+    let principal_id = add_principal(&ctx, "bob");
     let ns_id = add_namespace(&ctx, "shared");
-    grant_permission(&ctx, &user_id, &ns_id, "repo:read");
+    grant_permission(&ctx, &principal_id, &ns_id, "repo:read");
 
-    let has_user_grant = |grants: &[Value]| grants.iter().any(|g| g["user_id"] == user_id);
+    let has_principal_grant =
+        |grants: &[Value]| grants.iter().any(|g| g["principal_id"] == principal_id);
 
-    assert!(has_user_grant(&list_grants_json(&ctx)));
+    assert!(has_principal_grant(&list_grants_json(&ctx)));
 
-    ctx.remove_user(&user_id).success();
+    ctx.remove_principal(&principal_id).success();
 
-    assert!(!has_user_grant(&list_grants_json(&ctx)));
+    assert!(!has_principal_grant(&list_grants_json(&ctx)));
 }
 
 #[test]
-fn user_remove_deletes_users_primary_namespace() {
+fn principal_remove_deletes_principals_primary_namespace() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "carol");
+    let principal_id = add_principal(&ctx, "carol");
 
     let has_namespace = |namespaces: &[Value]| namespaces.iter().any(|n| n["name"] == "carol");
 
     assert!(has_namespace(&list_namespaces_json(&ctx)));
 
-    ctx.remove_user(&user_id).success();
+    ctx.remove_principal(&principal_id).success();
 
     assert!(!has_namespace(&list_namespaces_json(&ctx)));
 }
 
 #[test]
-fn user_remove_leaves_other_users_tokens_and_grants_intact() {
+fn principal_remove_leaves_other_principals_tokens_and_grants_intact() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let alice_id = add_user(&ctx, "alice");
-    let bob_id = add_user(&ctx, "bob");
+    let alice_id = add_principal(&ctx, "alice");
+    let bob_id = add_principal(&ctx, "bob");
     let ns_id = add_namespace(&ctx, "shared");
 
     create_token(&ctx, &alice_id);
@@ -384,17 +387,17 @@ fn user_remove_leaves_other_users_tokens_and_grants_intact() {
     grant_permission(&ctx, &alice_id, &ns_id, "repo:read");
     grant_permission(&ctx, &bob_id, &ns_id, "repo:write");
 
-    ctx.remove_user(&alice_id).success();
+    ctx.remove_principal(&alice_id).success();
 
     let tokens = list_tokens_json(&ctx);
     assert!(
         tokens
             .iter()
-            .any(|t| t["user_id"].as_str() == Some(&bob_id))
+            .any(|t| t["principal_id"].as_str() == Some(&bob_id))
     );
 
     let grants = list_grants_json(&ctx);
-    assert!(grants.iter().any(|g| g["user_id"] == bob_id));
+    assert!(grants.iter().any(|g| g["principal_id"] == bob_id));
 }
 
 // ============================================================================
@@ -402,11 +405,11 @@ fn user_remove_leaves_other_users_tokens_and_grants_intact() {
 // ============================================================================
 
 #[test]
-fn namespace_remove_rejects_deletion_of_users_primary_namespace() {
+fn namespace_remove_rejects_deletion_of_principals_primary_namespace() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    add_user(&ctx, "dave");
+    add_principal(&ctx, "dave");
     let ns_id = get_namespace_id(&ctx, "dave");
 
     ctx.remove_namespace(&ns_id)
@@ -436,7 +439,7 @@ fn permission_grant_accepts_single_permission_string() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "eve");
+    let principal_id = add_principal(&ctx, "eve");
     let ns_id = add_namespace(&ctx, "shared");
 
     ctx.cmd()
@@ -446,8 +449,8 @@ fn permission_grant_accepts_single_permission_string() {
             "grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--permissions",
@@ -460,7 +463,7 @@ fn permission_grant_accepts_single_permission_string() {
     let grants = list_grants_json(&ctx);
     let grant = grants
         .iter()
-        .find(|g| g["user_id"] == user_id)
+        .find(|g| g["principal_id"] == principal_id)
         .expect("grant not found");
     let perms = grant["permissions"]
         .as_array()
@@ -473,7 +476,7 @@ fn permission_grant_parses_comma_separated_permissions() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "frank");
+    let principal_id = add_principal(&ctx, "frank");
     let ns_id = add_namespace(&ctx, "shared");
 
     ctx.cmd()
@@ -483,8 +486,8 @@ fn permission_grant_parses_comma_separated_permissions() {
             "grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--permissions",
@@ -497,7 +500,7 @@ fn permission_grant_parses_comma_separated_permissions() {
     let grants = list_grants_json(&ctx);
     let grant = grants
         .iter()
-        .find(|g| g["user_id"] == user_id)
+        .find(|g| g["principal_id"] == principal_id)
         .expect("grant not found");
     let perms = grant["permissions"]
         .as_array()
@@ -512,7 +515,7 @@ fn permission_grant_trims_whitespace_around_permissions() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "grace");
+    let principal_id = add_principal(&ctx, "grace");
     let ns_id = add_namespace(&ctx, "shared");
 
     ctx.cmd()
@@ -522,8 +525,8 @@ fn permission_grant_trims_whitespace_around_permissions() {
             "grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--permissions",
@@ -536,7 +539,7 @@ fn permission_grant_trims_whitespace_around_permissions() {
     let grants = list_grants_json(&ctx);
     let grant = grants
         .iter()
-        .find(|g| g["user_id"] == user_id)
+        .find(|g| g["principal_id"] == principal_id)
         .expect("grant not found");
     let perms = grant["permissions"]
         .as_array()
@@ -550,7 +553,7 @@ fn permission_grant_rejects_invalid_permission_name() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "henry");
+    let principal_id = add_principal(&ctx, "henry");
     let ns_id = add_namespace(&ctx, "shared");
 
     ctx.cmd()
@@ -560,8 +563,8 @@ fn permission_grant_rejects_invalid_permission_name() {
             "grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--permissions",
@@ -582,7 +585,7 @@ fn token_create_with_expires_days_sets_expiration_date() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "irene");
+    let principal_id = add_principal(&ctx, "irene");
 
     ctx.cmd()
         .args([
@@ -591,8 +594,8 @@ fn token_create_with_expires_days_sets_expiration_date() {
             "create",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--expires-days",
             "30",
             "--non-interactive",
@@ -601,7 +604,7 @@ fn token_create_with_expires_days_sets_expiration_date() {
         .success();
 
     let tokens = list_tokens_json(&ctx);
-    let token = find_last_token_for_user(&tokens, &user_id);
+    let token = find_last_token_for_principal(&tokens, &principal_id);
     assert!(token["expires_at"].is_string());
 }
 
@@ -610,7 +613,7 @@ fn token_create_with_zero_expires_days_creates_non_expiring_token() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "jack");
+    let principal_id = add_principal(&ctx, "jack");
 
     ctx.cmd()
         .args([
@@ -619,8 +622,8 @@ fn token_create_with_zero_expires_days_creates_non_expiring_token() {
             "create",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--expires-days",
             "0",
             "--non-interactive",
@@ -629,7 +632,7 @@ fn token_create_with_zero_expires_days_creates_non_expiring_token() {
         .success();
 
     let tokens = list_tokens_json(&ctx);
-    let token = find_last_token_for_user(&tokens, &user_id);
+    let token = find_last_token_for_principal(&tokens, &principal_id);
     assert!(token["expires_at"].is_null());
 }
 
@@ -638,7 +641,7 @@ fn token_create_without_expires_days_defaults_to_non_expiring() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "kate");
+    let principal_id = add_principal(&ctx, "kate");
 
     ctx.cmd()
         .args([
@@ -647,15 +650,15 @@ fn token_create_without_expires_days_defaults_to_non_expiring() {
             "create",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--non-interactive",
         ])
         .assert()
         .success();
 
     let tokens = list_tokens_json(&ctx);
-    let token = find_last_token_for_user(&tokens, &user_id);
+    let token = find_last_token_for_principal(&tokens, &principal_id);
     assert!(token["expires_at"].is_null());
 }
 
@@ -664,14 +667,14 @@ fn token_create_without_expires_days_defaults_to_non_expiring() {
 // ============================================================================
 
 #[test]
-fn user_add_in_non_interactive_mode_fails_without_username_flag() {
+fn principal_add_in_non_interactive_mode_fails_without_username_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
     ctx.cmd()
         .args([
             "admin",
-            "user",
+            "principal",
             "add",
             "--data-dir",
             &ctx.data_dir_str(),
@@ -683,16 +686,16 @@ fn user_add_in_non_interactive_mode_fails_without_username_flag() {
 }
 
 #[test]
-fn user_remove_in_non_interactive_mode_fails_without_user_id_flag() {
+fn principal_remove_in_non_interactive_mode_fails_without_principal_id_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    add_user(&ctx, "leo");
+    add_principal(&ctx, "leo");
 
     ctx.cmd()
         .args([
             "admin",
-            "user",
+            "principal",
             "remove",
             "--data-dir",
             &ctx.data_dir_str(),
@@ -700,25 +703,25 @@ fn user_remove_in_non_interactive_mode_fails_without_user_id_flag() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("--user-id is required"));
+        .stderr(predicate::str::contains("--principal-id is required"));
 }
 
 #[test]
-fn user_remove_in_non_interactive_mode_fails_without_yes_flag() {
+fn principal_remove_in_non_interactive_mode_fails_without_yes_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "mike");
+    let principal_id = add_principal(&ctx, "mike");
 
     ctx.cmd()
         .args([
             "admin",
-            "user",
+            "principal",
             "remove",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--non-interactive",
         ])
         .assert()
@@ -731,7 +734,7 @@ fn permission_grant_in_non_interactive_mode_fails_without_permissions_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "nancy");
+    let principal_id = add_principal(&ctx, "nancy");
     let ns_id = add_namespace(&ctx, "shared");
 
     ctx.cmd()
@@ -741,8 +744,8 @@ fn permission_grant_in_non_interactive_mode_fails_without_permissions_flag() {
             "grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--non-interactive",
@@ -771,7 +774,7 @@ fn info_with_json_flag_outputs_valid_json() {
 }
 
 #[test]
-fn info_json_output_contains_users_namespaces_tokens_and_repos_fields() {
+fn info_json_output_contains_principals_namespaces_tokens_and_repos_fields() {
     let ctx = TestContext::new();
     ctx.init().success();
 
@@ -783,7 +786,10 @@ fn info_json_output_contains_users_namespaces_tokens_and_repos_fields() {
 
     let info: Value = serde_json::from_slice(&output.stdout).expect("output is not valid JSON");
 
-    assert!(info.get("users").is_some(), "missing 'users' field");
+    assert!(
+        info.get("principals").is_some(),
+        "missing 'principals' field"
+    );
     assert!(
         info.get("namespaces").is_some(),
         "missing 'namespaces' field"
@@ -797,7 +803,7 @@ fn info_json_output_contains_users_namespaces_tokens_and_repos_fields() {
 // ==========================================================================
 
 #[test]
-fn token_create_in_non_interactive_mode_fails_without_user_id_flag() {
+fn token_create_in_non_interactive_mode_fails_without_principal_id_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
@@ -812,7 +818,7 @@ fn token_create_in_non_interactive_mode_fails_without_user_id_flag() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("--user-id is required"));
+        .stderr(predicate::str::contains("--principal-id is required"));
 }
 
 #[test]
@@ -840,8 +846,8 @@ fn token_revoke_in_non_interactive_mode_fails_without_yes_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "oliver");
-    let token_id = create_token(&ctx, &user_id);
+    let principal_id = add_principal(&ctx, "oliver");
+    let token_id = create_token(&ctx, &principal_id);
 
     ctx.cmd()
         .args([
@@ -864,8 +870,8 @@ fn token_revoke_removes_token() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "paul");
-    let token_id = create_token(&ctx, &user_id);
+    let principal_id = add_principal(&ctx, "paul");
+    let token_id = create_token(&ctx, &principal_id);
 
     ctx.cmd()
         .args([
@@ -953,7 +959,7 @@ fn permission_revoke_in_non_interactive_mode_fails_without_namespace_id_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "quinn");
+    let principal_id = add_principal(&ctx, "quinn");
 
     ctx.cmd()
         .args([
@@ -962,8 +968,8 @@ fn permission_revoke_in_non_interactive_mode_fails_without_namespace_id_flag() {
             "revoke",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--non-interactive",
             "--yes",
         ])
@@ -977,9 +983,9 @@ fn permission_revoke_in_non_interactive_mode_fails_without_yes_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "riley");
+    let principal_id = add_principal(&ctx, "riley");
     let ns_id = add_namespace(&ctx, "shared-revoke");
-    grant_permission(&ctx, &user_id, &ns_id, "repo:read");
+    grant_permission(&ctx, &principal_id, &ns_id, "repo:read");
 
     ctx.cmd()
         .args([
@@ -988,8 +994,8 @@ fn permission_revoke_in_non_interactive_mode_fails_without_yes_flag() {
             "revoke",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--non-interactive",
@@ -1004,9 +1010,9 @@ fn permission_revoke_removes_grant() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "sam");
+    let principal_id = add_principal(&ctx, "sam");
     let ns_id = add_namespace(&ctx, "shared-grant");
-    grant_permission(&ctx, &user_id, &ns_id, "repo:read");
+    grant_permission(&ctx, &principal_id, &ns_id, "repo:read");
 
     ctx.cmd()
         .args([
@@ -1015,8 +1021,8 @@ fn permission_revoke_removes_grant() {
             "revoke",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--namespace-id",
             &ns_id,
             "--non-interactive",
@@ -1026,7 +1032,7 @@ fn permission_revoke_removes_grant() {
         .success();
 
     let grants = list_grants_json(&ctx);
-    assert!(grants.iter().all(|g| g["user_id"] != user_id));
+    assert!(grants.iter().all(|g| g["principal_id"] != principal_id));
 }
 
 #[test]
@@ -1034,7 +1040,7 @@ fn permission_repo_grant_in_non_interactive_mode_fails_without_repo_id_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "taylor");
+    let principal_id = add_principal(&ctx, "taylor");
 
     ctx.cmd()
         .args([
@@ -1043,8 +1049,8 @@ fn permission_repo_grant_in_non_interactive_mode_fails_without_repo_id_flag() {
             "repo-grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--permissions",
             "repo:read",
             "--non-interactive",
@@ -1059,7 +1065,7 @@ fn permission_repo_grant_in_non_interactive_mode_fails_without_permissions_flag(
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "uma");
+    let principal_id = add_principal(&ctx, "uma");
     let ns_id = get_namespace_id(&ctx, "uma");
     let repo_id = create_repo(&ctx, &ns_id, "repo-for-perms");
 
@@ -1070,8 +1076,8 @@ fn permission_repo_grant_in_non_interactive_mode_fails_without_permissions_flag(
             "repo-grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--repo-id",
             &repo_id,
             "--non-interactive",
@@ -1086,7 +1092,7 @@ fn permission_repo_revoke_in_non_interactive_mode_fails_without_repo_id_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "vera");
+    let principal_id = add_principal(&ctx, "vera");
 
     ctx.cmd()
         .args([
@@ -1095,8 +1101,8 @@ fn permission_repo_revoke_in_non_interactive_mode_fails_without_repo_id_flag() {
             "repo-revoke",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--non-interactive",
             "--yes",
         ])
@@ -1110,7 +1116,7 @@ fn permission_repo_revoke_in_non_interactive_mode_fails_without_yes_flag() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "wren");
+    let principal_id = add_principal(&ctx, "wren");
     let ns_id = get_namespace_id(&ctx, "wren");
     let repo_id = create_repo(&ctx, &ns_id, "repo-for-revoke");
 
@@ -1121,8 +1127,8 @@ fn permission_repo_revoke_in_non_interactive_mode_fails_without_yes_flag() {
             "repo-grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--repo-id",
             &repo_id,
             "--permissions",
@@ -1139,8 +1145,8 @@ fn permission_repo_revoke_in_non_interactive_mode_fails_without_yes_flag() {
             "repo-revoke",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--repo-id",
             &repo_id,
             "--non-interactive",
@@ -1155,7 +1161,7 @@ fn permission_repo_grant_and_revoke_work() {
     let ctx = TestContext::new();
     ctx.init().success();
 
-    let user_id = add_user(&ctx, "xena");
+    let principal_id = add_principal(&ctx, "xena");
     let ns_id = get_namespace_id(&ctx, "xena");
     let repo_id = create_repo(&ctx, &ns_id, "repo-access");
 
@@ -1166,8 +1172,8 @@ fn permission_repo_grant_and_revoke_work() {
             "repo-grant",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--repo-id",
             &repo_id,
             "--permissions",
@@ -1180,7 +1186,7 @@ fn permission_repo_grant_and_revoke_work() {
     let store = open_store(&ctx);
     assert!(
         store
-            .get_repo_grant(&user_id, &repo_id)
+            .get_repo_grant(&principal_id, &repo_id)
             .expect("get repo grant")
             .is_some()
     );
@@ -1192,8 +1198,8 @@ fn permission_repo_grant_and_revoke_work() {
             "repo-revoke",
             "--data-dir",
             &ctx.data_dir_str(),
-            "--user-id",
-            &user_id,
+            "--principal-id",
+            &principal_id,
             "--repo-id",
             &repo_id,
             "--non-interactive",
@@ -1205,7 +1211,7 @@ fn permission_repo_grant_and_revoke_work() {
     let store = open_store(&ctx);
     assert!(
         store
-            .get_repo_grant(&user_id, &repo_id)
+            .get_repo_grant(&principal_id, &repo_id)
             .expect("get repo grant")
             .is_none()
     );

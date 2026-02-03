@@ -22,7 +22,7 @@ use crate::server::response::{
     ApiError, ApiResponse, PaginatedResponse, StoreOptionExt, StoreResultExt,
 };
 
-use crate::auth::RequireUser;
+use crate::auth::RequirePrincipal;
 use crate::server::user::access::require_repo_permission;
 use crate::types::Permission;
 
@@ -770,7 +770,7 @@ pub async fn get_readme(
 
 async fn load_repo_with_write_access(
     state: &Arc<AppState>,
-    auth: &RequireUser,
+    auth: &RequirePrincipal,
     repo_id: &str,
     init_if_missing: bool,
 ) -> Result<(crate::types::Repo, git2::Repository), ApiError> {
@@ -782,7 +782,7 @@ async fn load_repo_with_write_access(
 
     require_repo_permission(
         state.store.as_ref(),
-        &auth.user,
+        &auth.principal,
         &repo,
         Permission::REPO_WRITE,
     )?;
@@ -799,7 +799,7 @@ async fn load_repo_with_write_access(
 
 /// POST /repos/{id}/refs - Create a new reference
 pub async fn create_ref_handler(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<CreateRefRequest>,
@@ -837,7 +837,7 @@ pub struct RefPath {
 
 /// PATCH /repos/{id}/refs/{type}/{name} - Update a reference
 pub async fn update_ref_handler(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(path): Path<RefPath>,
     Json(req): Json<UpdateRefRequest>,
@@ -864,7 +864,7 @@ pub async fn update_ref_handler(
 
 /// DELETE /repos/{id}/refs/{type}/{name} - Delete a reference
 pub async fn delete_ref_handler(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(path): Path<RefPath>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -877,7 +877,7 @@ pub async fn delete_ref_handler(
 
 /// PUT /repos/{id}/default-branch - Set the default branch
 pub async fn set_default_branch_handler(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<SetDefaultBranchRequest>,
@@ -920,10 +920,10 @@ fn decode_content(content: &str, encoding: Option<&str>) -> Result<Vec<u8>, ApiE
     }
 }
 
-fn get_commit_author(state: &AppState, user: &crate::types::User) -> (String, String) {
+fn get_commit_author(state: &AppState, principal: &crate::types::Principal) -> (String, String) {
     let name = state
         .store
-        .get_namespace(&user.primary_namespace_id)
+        .get_namespace(&principal.primary_namespace_id)
         .ok()
         .flatten()
         .map(|ns| ns.name)
@@ -1046,7 +1046,7 @@ async fn parse_multipart_upload(
 
 /// PUT /repos/{id}/blob/{ref}/{*path} - Create or update a file
 pub async fn put_blob(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path((id, ref_name, path)): Path<(String, String, String)>,
     Json(req): Json<PutBlobRequest>,
@@ -1067,7 +1067,7 @@ pub async fn put_blob(
 
     check_create_or_update(&tree, path, req.sha.as_deref())?;
 
-    let (author_name, author_email) = get_commit_author(&state, &auth.user);
+    let (author_name, author_email) = get_commit_author(&state, &auth.principal);
     let (commit_oid, file_info) = commit_blob_change(
         &git_repo,
         &tree,
@@ -1091,7 +1091,7 @@ pub async fn put_blob(
 
 /// DELETE /repos/{id}/blob/{ref}/{*path} - Delete a file
 pub async fn delete_blob(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path((id, ref_name, path)): Path<(String, String, String)>,
     Json(req): Json<DeleteBlobRequest>,
@@ -1112,7 +1112,7 @@ pub async fn delete_blob(
     verify_blob_sha(&tree, path, &req.sha)?;
     let new_tree_oid = tree_without_entry(&git_repo, &tree, path)?;
 
-    let (author_name, author_email) = get_commit_author(&state, &auth.user);
+    let (author_name, author_email) = get_commit_author(&state, &auth.principal);
     let commit_oid = create_commit_on_branch(
         &git_repo,
         &branch,
@@ -1131,7 +1131,7 @@ pub async fn delete_blob(
 
 /// POST /repos/{id}/commits - Multi-file atomic commit
 pub async fn create_multi_commit(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<MultiCommitRequest>,
@@ -1150,7 +1150,7 @@ pub async fn create_multi_commit(
         .map(action_to_op)
         .collect::<Result<_, _>>()?;
 
-    let (author_name, author_email) = get_commit_author(&state, &auth.user);
+    let (author_name, author_email) = get_commit_author(&state, &auth.principal);
     let commit_oid = apply_actions(
         &git_repo,
         &branch,
@@ -1210,7 +1210,7 @@ fn action_to_op(action: &CommitAction) -> Result<CommitActionOp, ApiError> {
 
 /// POST /repos/{id}/upload/{ref}/{*path} - Binary file upload
 pub async fn upload_blob(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path((id, ref_name, path)): Path<(String, String, String)>,
     mut multipart: axum::extract::Multipart,
@@ -1232,7 +1232,7 @@ pub async fn upload_blob(
 
     check_create_or_update(&tree, path, sha.as_deref())?;
 
-    let (author_name, author_email) = get_commit_author(&state, &auth.user);
+    let (author_name, author_email) = get_commit_author(&state, &auth.principal);
     let (commit_oid, file_info) = commit_blob_change(
         &git_repo,
         &tree,

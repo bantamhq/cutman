@@ -10,9 +10,9 @@ use serde_json::json;
 
 use super::helpers::{TokenValidationError, extract_token_from_header, validate_token};
 use crate::server::AppState;
-use crate::types::{Token, User};
+use crate::types::{Principal, Token};
 
-/// An authenticated token (admin or user)
+/// An authenticated token (admin or principal)
 pub struct AuthToken(pub Token);
 
 /// An admin token specifically
@@ -24,10 +24,10 @@ pub struct RequireAuth(pub Token);
 /// Extractor that requires admin authentication
 pub struct RequireAdmin(pub Token);
 
-/// Extractor that requires user authentication (non-admin token with user_id)
-pub struct RequireUser {
+/// Extractor that requires principal authentication (non-admin token with principal_id)
+pub struct RequirePrincipal {
     pub token: Token,
-    pub user: User,
+    pub principal: Principal,
 }
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub enum AuthError {
     InvalidToken,
     TokenExpired,
     NotAdmin,
-    NotUser,
+    NotPrincipal,
     InternalError,
 }
 
@@ -49,9 +49,9 @@ impl IntoResponse for AuthError {
             AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
             AuthError::TokenExpired => (StatusCode::UNAUTHORIZED, "Token expired"),
             AuthError::NotAdmin => (StatusCode::FORBIDDEN, "Admin access required"),
-            AuthError::NotUser => (
+            AuthError::NotPrincipal => (
                 StatusCode::FORBIDDEN,
-                "User token required for this operation",
+                "Principal token required for this operation",
             ),
             AuthError::InternalError => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
@@ -102,7 +102,7 @@ impl FromRequestParts<Arc<AppState>> for RequireAdmin {
     }
 }
 
-impl FromRequestParts<Arc<AppState>> for RequireUser {
+impl FromRequestParts<Arc<AppState>> for RequirePrincipal {
     type Rejection = AuthError;
 
     async fn from_request_parts(
@@ -112,18 +112,18 @@ impl FromRequestParts<Arc<AppState>> for RequireUser {
         let token = extract_and_validate_token(parts, state).await?;
 
         if token.is_admin {
-            return Err(AuthError::NotUser);
+            return Err(AuthError::NotPrincipal);
         }
 
-        let user_id = token.user_id.as_ref().ok_or(AuthError::NotUser)?;
+        let principal_id = token.principal_id.as_ref().ok_or(AuthError::NotPrincipal)?;
 
-        let user = state
+        let principal = state
             .store
-            .get_user(user_id)
+            .get_principal(principal_id)
             .map_err(|_| AuthError::InternalError)?
-            .ok_or(AuthError::NotUser)?;
+            .ok_or(AuthError::NotPrincipal)?;
 
-        Ok(RequireUser { token, user })
+        Ok(RequirePrincipal { token, principal })
     }
 }
 

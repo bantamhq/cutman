@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::auth::RequireUser;
+use crate::auth::RequirePrincipal;
 use crate::server::AppState;
 use crate::server::dto::{
     CreateFolderRequest, ListFolderReposParams, ListFoldersParams, UpdateFolderRequest,
@@ -19,15 +19,15 @@ use crate::types::Permission;
 use super::access::{require_namespace_permission, resolve_namespace_id};
 
 pub async fn list_folders(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListFoldersParams>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
-    let ns_id = resolve_namespace_id(store, user, params.namespace.as_deref())?;
+    let ns_id = resolve_namespace_id(store, principal, params.namespace.as_deref())?;
 
-    require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_READ)?;
+    require_namespace_permission(store, principal, &ns_id, Permission::NAMESPACE_READ)?;
 
     let folders = store
         .list_all_folders(&ns_id)
@@ -37,15 +37,15 @@ pub async fn list_folders(
 }
 
 pub async fn create_folder(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateFolderRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
-    let ns_id = resolve_namespace_id(store, user, req.namespace.as_deref())?;
+    let ns_id = resolve_namespace_id(store, principal, req.namespace.as_deref())?;
 
-    require_namespace_permission(store, user, &ns_id, Permission::NAMESPACE_WRITE)?;
+    require_namespace_permission(store, principal, &ns_id, Permission::NAMESPACE_WRITE)?;
 
     let normalized_path =
         normalize_path(&req.path).map_err(|e| ApiError::bad_request(e.to_string()))?;
@@ -71,11 +71,11 @@ pub async fn create_folder(
 }
 
 pub async fn get_folder(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let folder = store
@@ -85,7 +85,7 @@ pub async fn get_folder(
 
     require_namespace_permission(
         store,
-        user,
+        principal,
         &folder.namespace_id,
         Permission::NAMESPACE_READ,
     )?;
@@ -94,12 +94,12 @@ pub async fn get_folder(
 }
 
 pub async fn update_folder(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
     Json(req): Json<UpdateFolderRequest>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let folder = store
@@ -109,7 +109,7 @@ pub async fn update_folder(
 
     require_namespace_permission(
         store,
-        user,
+        principal,
         &folder.namespace_id,
         Permission::NAMESPACE_WRITE,
     )?;
@@ -134,11 +134,11 @@ pub async fn update_folder(
 }
 
 pub async fn delete_folder(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let folder = store
@@ -148,7 +148,7 @@ pub async fn delete_folder(
 
     require_namespace_permission(
         store,
-        user,
+        principal,
         &folder.namespace_id,
         Permission::NAMESPACE_ADMIN,
     )?;
@@ -159,12 +159,12 @@ pub async fn delete_folder(
 }
 
 pub async fn list_folder_repos(
-    auth: RequireUser,
+    auth: RequirePrincipal,
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
     Query(params): Query<ListFolderReposParams>,
 ) -> impl IntoResponse {
-    let user = &auth.user;
+    let principal = &auth.principal;
     let store = state.store.as_ref();
 
     let folder = store
@@ -174,7 +174,7 @@ pub async fn list_folder_repos(
 
     require_namespace_permission(
         store,
-        user,
+        principal,
         &folder.namespace_id,
         Permission::NAMESPACE_READ,
     )?;
