@@ -95,14 +95,14 @@ Admin commands (direct database access):
 | Command | Description |
 |---------|-------------|
 | `cutman admin init` | Initialize the server |
-| `cutman admin user add` | Create a user |
+| `cutman admin principal add` | Create a principal (user account) |
 | `cutman admin token create` | Generate a token |
 | `cutman admin namespace add` | Create a shared namespace |
 | `cutman admin permission grant` | Grant namespace/repo access |
 
 ## API
 
-Cutman has a comprehensive REST API covering everything: repos, folders, tags, users, namespaces, permissions, and git content browsing (commits, trees, blobs, blame, diffs).
+Cutman has a comprehensive REST API covering everything: repos, folders, tags, principals, namespaces, permissions, and git content browsing (commits, trees, blobs, blame, diffs).
 
 See openapi.yaml for full documentation.
 
