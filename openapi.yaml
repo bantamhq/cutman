@@ -4140,12 +4140,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RepoGrantResponse'
+        scope:
+          $ref: '#/components/schemas/TokenScopeResponse'
       required:
         - id
         - is_admin
         - created_at
         - namespace_grants
         - repo_grants
+
+    TokenScopeResponse:
+      type: object
+      description: Present when the token is limited to a single repository
+      properties:
+        repo_id:
+          type: string
+          description: The only repository this token can access
+        allow:
+          type: array
+          items:
+            type: string
+            enum: [repo:read, repo:write, repo:admin]
+          description: The most this token can do on the repository
+      required:
+        - repo_id
+        - allow
 
     CreatePrincipalTokenRequest:
       type: object
@@ -4156,6 +4175,21 @@ components:
           description: Token expiration time in seconds from now
           examples:
             - 86400
+        repo_id:
+          type: string
+          description: >-
+            Limit the token to this repository. Must be provided together with `allow`.
+            A repo-scoped token works only for git operations and repository content on
+            that repository, never for other API routes, and can never exceed the
+            principal's own permissions on the repository.
+        allow:
+          type: array
+          items:
+            type: string
+            enum: [repo:read, repo:write, repo:admin]
+          description: Repo permissions for a repo-scoped token. Must be provided together with `repo_id`.
+          examples:
+            - [repo:write]
 
     CreateTokenResponse:
       type: object

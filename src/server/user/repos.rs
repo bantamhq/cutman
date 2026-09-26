@@ -49,7 +49,11 @@ pub async fn list_repos(
         let mut all_repos = Vec::new();
 
         let primary_repos = store
-            .list_repos(&principal.primary_namespace_id, cursor, DEFAULT_PAGE_SIZE + 1)
+            .list_repos(
+                &principal.primary_namespace_id,
+                cursor,
+                DEFAULT_PAGE_SIZE + 1,
+            )
             .api_err("Failed to list repos")?;
         all_repos.extend(primary_repos);
 

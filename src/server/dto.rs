@@ -20,6 +20,10 @@ pub struct CreatePrincipalRequest {
 pub struct CreatePrincipalTokenRequest {
     #[serde(default)]
     pub expires_in_seconds: Option<i64>,
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    #[serde(default)]
+    pub allow: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +73,14 @@ pub struct TokenResponse {
     pub namespace_grants: Vec<NamespaceGrantResponse>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub repo_grants: Vec<RepoGrantResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<TokenScopeResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TokenScopeResponse {
+    pub repo_id: String,
+    pub allow: Vec<&'static str>,
 }
 
 #[derive(Debug, Serialize)]

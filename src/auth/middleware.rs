@@ -38,6 +38,7 @@ pub enum AuthError {
     TokenExpired,
     NotAdmin,
     NotPrincipal,
+    ScopedTokenNotAllowed,
     InternalError,
 }
 
@@ -52,6 +53,10 @@ impl IntoResponse for AuthError {
             AuthError::NotPrincipal => (
                 StatusCode::FORBIDDEN,
                 "Principal token required for this operation",
+            ),
+            AuthError::ScopedTokenNotAllowed => (
+                StatusCode::FORBIDDEN,
+                "Repo-scoped tokens can only be used for git and repository content",
             ),
             AuthError::InternalError => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
@@ -151,6 +156,10 @@ async fn extract_and_validate_token(
         TokenValidationError::AdminTokenNotAllowed => AuthError::NotAdmin, // unreachable since allow_admin=true
         TokenValidationError::InternalError => AuthError::InternalError,
     })?;
+
+    if validated.token.is_scoped() {
+        return Err(AuthError::ScopedTokenNotAllowed);
+    }
 
     Ok(validated.token)
 }

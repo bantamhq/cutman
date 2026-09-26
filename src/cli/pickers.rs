@@ -16,7 +16,12 @@ pub struct PrincipalDisplay {
 
 impl fmt::Display for PrincipalDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({}...)", self.namespace_name, &self.principal.id[..8])
+        write!(
+            f,
+            "{} ({}...)",
+            self.namespace_name,
+            &self.principal.id[..8]
+        )
     }
 }
 
@@ -54,7 +59,7 @@ impl fmt::Display for TokenDisplay {
         write!(
             f,
             "cutman_{}...  {}  created {}  {}",
-            &self.token.token_lookup, user, created, last_used
+            self.token.token_lookup, user, created, last_used
         )
     }
 }
@@ -402,7 +407,10 @@ pub fn pick_token(store: &impl Store) -> anyhow::Result<Option<Token>> {
 }
 
 /// Pick a grant for a specific principal
-pub fn pick_grant(store: &impl Store, principal_id: &str) -> anyhow::Result<Option<NamespaceGrant>> {
+pub fn pick_grant(
+    store: &impl Store,
+    principal_id: &str,
+) -> anyhow::Result<Option<NamespaceGrant>> {
     let grants = load_principal_grants_with_names(store, principal_id)?;
 
     if grants.is_empty() {
@@ -518,7 +526,10 @@ pub fn list_all_grants(
     Ok(result)
 }
 
-fn resolve_principal_with_name(store: &impl Store, principal_id: &str) -> anyhow::Result<(Principal, String)> {
+fn resolve_principal_with_name(
+    store: &impl Store,
+    principal_id: &str,
+) -> anyhow::Result<(Principal, String)> {
     let principal = store
         .get_principal(principal_id)?
         .ok_or_else(|| anyhow::anyhow!("Principal not found: {}", principal_id))?;
@@ -589,6 +600,8 @@ pub fn create_token_for_principal(
         created_at: now,
         expires_at: expires_in.map(|d| now + d),
         last_used_at: None,
+        scope_repo_id: None,
+        scope: None,
     };
     Ok((token, raw_token))
 }
@@ -658,7 +671,10 @@ pub fn pick_repo(store: &impl Store) -> anyhow::Result<Option<Repo>> {
 }
 
 /// Pick a repo grant for a specific principal
-pub fn pick_repo_grant(store: &impl Store, principal_id: &str) -> anyhow::Result<Option<RepoGrant>> {
+pub fn pick_repo_grant(
+    store: &impl Store,
+    principal_id: &str,
+) -> anyhow::Result<Option<RepoGrant>> {
     let grants = load_principal_repo_grants_with_names(store, principal_id)?;
 
     if grants.is_empty() {

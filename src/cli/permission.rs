@@ -18,7 +18,8 @@ pub fn run_permission_grant(
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)?
+    {
         Some(result) => result,
         None => return Ok(()),
     };
@@ -85,7 +86,8 @@ pub fn run_permission_revoke(
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)?
+    {
         Some(result) => result,
         None => return Ok(()),
     };
@@ -140,7 +142,8 @@ pub fn run_permission_repo_grant(
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)?
+    {
         Some(result) => result,
         None => return Ok(()),
     };
@@ -210,14 +213,19 @@ pub fn run_permission_repo_revoke(
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)?
+    {
         Some(result) => result,
         None => return Ok(()),
     };
 
     let grant = if let Some(r_id) = repo_id {
         store.get_repo_grant(&principal.id, &r_id)?.ok_or_else(|| {
-            anyhow::anyhow!("Grant not found for principal {} on repo {}", principal.id, r_id)
+            anyhow::anyhow!(
+                "Grant not found for principal {} on repo {}",
+                principal.id,
+                r_id
+            )
         })?
     } else if non_interactive {
         anyhow::bail!("--repo-id is required in non-interactive mode");

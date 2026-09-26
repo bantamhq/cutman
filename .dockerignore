@@ -1,0 +1,6 @@
+target
+data
+.git
+tests
+scripts
+*.md

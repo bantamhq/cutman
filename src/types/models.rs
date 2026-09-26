@@ -39,6 +39,28 @@ pub struct Token {
     pub expires_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_used_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope_repo_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Permission>,
+}
+
+impl Token {
+    #[must_use]
+    pub fn is_scoped(&self) -> bool {
+        self.scope_repo_id.is_some()
+    }
+
+    #[must_use]
+    pub fn scope_allows(&self, repo_id: &str, required: Permission) -> bool {
+        match (&self.scope_repo_id, self.scope) {
+            (None, _) => true,
+            (Some(scoped_repo_id), Some(scope)) => {
+                scoped_repo_id == repo_id && scope.expand_implied().has(required)
+            }
+            (Some(_), None) => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

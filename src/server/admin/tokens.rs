@@ -10,7 +10,7 @@ use axum::{
 use crate::auth::RequireAdmin;
 use crate::server::AppState;
 use crate::server::dto::{
-    NamespaceGrantResponse, PaginationParams, RepoGrantResponse, TokenResponse,
+    NamespaceGrantResponse, PaginationParams, RepoGrantResponse, TokenResponse, TokenScopeResponse,
 };
 use crate::server::response::{
     ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, paginate,
@@ -93,6 +93,13 @@ pub fn token_to_response(state: &Arc<AppState>, token: Token) -> Result<TokenRes
         last_used_at: token.last_used_at,
         namespace_grants: Vec::new(),
         repo_grants: Vec::new(),
+        scope: match (token.scope_repo_id, token.scope) {
+            (Some(repo_id), Some(scope)) => Some(TokenScopeResponse {
+                repo_id,
+                allow: scope.to_strings(),
+            }),
+            _ => None,
+        },
     };
 
     if !token.is_admin {

@@ -18,6 +18,7 @@ use crate::server::dto::{
 use crate::server::response::{
     ApiError, ApiResponse, DEFAULT_PAGE_SIZE, PaginatedResponse, paginate,
 };
+use crate::server::user::access::check_repo_permission;
 use crate::server::validation::validate_namespace_name;
 use crate::types::{Namespace, NamespaceGrant, Permission, Principal, Token};
 
@@ -196,6 +197,8 @@ pub async fn create_principal_token(
         .expires_in_seconds
         .map(|s| Utc::now() + Duration::seconds(s));
 
+    let (scope_repo_id, scope) = resolve_token_scope(&state, &principal, &req)?;
+
     let generator = TokenGenerator::new();
 
     const MAX_RETRIES: u32 = 3;
@@ -214,6 +217,8 @@ pub async fn create_principal_token(
             created_at: now,
             expires_at,
             last_used_at: None,
+            scope_repo_id: scope_repo_id.clone(),
+            scope,
         };
 
         match state.store.create_token(&token) {
@@ -233,4 +238,61 @@ pub async fn create_principal_token(
     }
 
     Err(ApiError::internal("Failed to create token after retries"))
+}
+
+fn resolve_token_scope(
+    state: &Arc<AppState>,
+    principal: &Principal,
+    req: &CreatePrincipalTokenRequest,
+) -> Result<(Option<String>, Option<Permission>), ApiError> {
+    let (repo_id, allow) = match (&req.repo_id, &req.allow) {
+        (None, None) => return Ok((None, None)),
+        (Some(repo_id), Some(allow)) => (repo_id, allow),
+        _ => {
+            return Err(ApiError::bad_request(
+                "repo_id and allow must be provided together",
+            ));
+        }
+    };
+
+    if allow.is_empty() {
+        return Err(ApiError::bad_request("allow cannot be empty"));
+    }
+
+    let allow_strs: Vec<&str> = allow.iter().map(String::as_str).collect();
+    let scope = Permission::parse_many(&allow_strs)
+        .ok_or_else(|| ApiError::bad_request("Invalid permission in allow"))?;
+
+    let repo_permissions = Permission::REPO_READ
+        .union(Permission::REPO_WRITE)
+        .union(Permission::REPO_ADMIN);
+
+    if scope.difference(repo_permissions) != Permission::default() {
+        return Err(ApiError::bad_request(
+            "Scoped tokens only support repo permissions",
+        ));
+    }
+
+    let repo = state
+        .store
+        .get_repo_by_id(repo_id)
+        .map_err(|_| ApiError::internal("Failed to get repo"))?
+        .ok_or_else(|| ApiError::not_found("Repo not found"))?;
+
+    let expanded = scope.expand_implied();
+    for required in [
+        Permission::REPO_READ,
+        Permission::REPO_WRITE,
+        Permission::REPO_ADMIN,
+    ] {
+        if expanded.has(required)
+            && !check_repo_permission(state.store.as_ref(), principal, &repo, required)?
+        {
+            return Err(ApiError::bad_request(
+                "Scope cannot exceed the principal's permissions on the repo",
+            ));
+        }
+    }
+
+    Ok((Some(repo.id), Some(scope)))
 }

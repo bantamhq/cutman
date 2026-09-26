@@ -9,7 +9,6 @@ use crate::types::{Namespace, Permission, Principal, Repo, Token};
 
 pub struct GitAuth {
     pub principal: Option<Principal>,
-    #[allow(dead_code)]
     pub token: Option<Token>,
 }
 
@@ -111,6 +110,18 @@ pub fn check_git_access(
         None => return Err(GitAuthError::AuthRequired),
     };
 
+    if let Some(token) = git_auth.token.as_ref().filter(|t| t.is_scoped()) {
+        let required = if is_write {
+            Permission::REPO_WRITE
+        } else {
+            Permission::REPO_READ
+        };
+
+        if !repo.is_some_and(|r| token.scope_allows(&r.id, required)) {
+            return Err(GitAuthError::PermissionDenied);
+        }
+    }
+
     if is_write {
         check_write_access(state, principal, namespace, repo)
     } else {
@@ -125,7 +136,9 @@ fn check_write_access(
     repo: Option<&Repo>,
 ) -> Result<(), GitAuthError> {
     let has_permission = match repo {
-        Some(r) => check_repo_permission(state.store.as_ref(), principal, r, Permission::REPO_WRITE),
+        Some(r) => {
+            check_repo_permission(state.store.as_ref(), principal, r, Permission::REPO_WRITE)
+        }
         None => check_namespace_permission(
             state.store.as_ref(),
             principal,

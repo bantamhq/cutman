@@ -23,7 +23,10 @@ pub trait Store: Send + Sync {
     // Principal operations
     fn create_principal(&self, principal: &Principal) -> Result<()>;
     fn get_principal(&self, id: &str) -> Result<Option<Principal>>;
-    fn get_principal_by_primary_namespace_id(&self, namespace_id: &str) -> Result<Option<Principal>>;
+    fn get_principal_by_primary_namespace_id(
+        &self,
+        namespace_id: &str,
+    ) -> Result<Option<Principal>>;
     fn list_principals(&self, cursor: &str, limit: i32) -> Result<Vec<Principal>>;
     fn update_principal(&self, principal: &Principal) -> Result<()>;
     fn delete_principal(&self, id: &str) -> Result<bool>;
@@ -106,7 +109,11 @@ pub trait Store: Send + Sync {
     fn delete_repo_grant(&self, principal_id: &str, repo_id: &str) -> Result<bool>;
     fn get_repo_grant(&self, principal_id: &str, repo_id: &str) -> Result<Option<RepoGrant>>;
     fn list_principal_repo_grants(&self, principal_id: &str) -> Result<Vec<RepoGrant>>;
-    fn list_principal_repos_with_grants(&self, principal_id: &str, namespace_id: &str) -> Result<Vec<Repo>>;
+    fn list_principal_repos_with_grants(
+        &self,
+        principal_id: &str,
+        namespace_id: &str,
+    ) -> Result<Vec<Repo>>;
     fn has_repo_grants_in_namespace(&self, principal_id: &str, namespace_id: &str) -> Result<bool>;
 
     // LFS object operations

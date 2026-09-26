@@ -22,11 +22,7 @@ pub struct AppState {
 
 impl AppState {
     #[must_use]
-    pub fn new(
-        store: Arc<dyn Store>,
-        data_dir: PathBuf,
-        public_base_url: Option<String>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn Store>, data_dir: PathBuf, public_base_url: Option<String>) -> Self {
         Self {
             store,
             data_dir,

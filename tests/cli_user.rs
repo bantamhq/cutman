@@ -365,8 +365,13 @@ async fn repo_tag_and_delete_flow() {
         .assert()
         .success();
 
-    let mut tag_ids =
-        list_repo_tag_ids(&client, &server.base_url, &principal.principal_token, &repo_id).await;
+    let mut tag_ids = list_repo_tag_ids(
+        &client,
+        &server.base_url,
+        &principal.principal_token,
+        &repo_id,
+    )
+    .await;
     tag_ids.sort();
     let mut expected = vec![tag_a.clone(), tag_b.clone()];
     expected.sort();

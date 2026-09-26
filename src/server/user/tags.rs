@@ -90,7 +90,12 @@ pub async fn get_tag(
         .api_err("Failed to get tag")?
         .or_not_found("Tag not found")?;
 
-    require_namespace_permission(store, principal, &tag.namespace_id, Permission::NAMESPACE_READ)?;
+    require_namespace_permission(
+        store,
+        principal,
+        &tag.namespace_id,
+        Permission::NAMESPACE_READ,
+    )?;
 
     Ok::<_, ApiError>(Json(ApiResponse::success(tag)))
 }
@@ -109,7 +114,12 @@ pub async fn update_tag(
         .api_err("Failed to get tag")?
         .or_not_found("Tag not found")?;
 
-    require_namespace_permission(store, principal, &tag.namespace_id, Permission::NAMESPACE_WRITE)?;
+    require_namespace_permission(
+        store,
+        principal,
+        &tag.namespace_id,
+        Permission::NAMESPACE_WRITE,
+    )?;
 
     if let Some(name) = req.name {
         validate_tag_name(&name)?;
@@ -147,7 +157,12 @@ pub async fn delete_tag(
         .api_err("Failed to get tag")?
         .or_not_found("Tag not found")?;
 
-    require_namespace_permission(store, principal, &tag.namespace_id, Permission::NAMESPACE_ADMIN)?;
+    require_namespace_permission(
+        store,
+        principal,
+        &tag.namespace_id,
+        Permission::NAMESPACE_ADMIN,
+    )?;
 
     let repo_count = store
         .count_tag_repos(&tag.id)

@@ -29,6 +29,23 @@ impl SqliteStore {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn migrate(conn: &Connection) -> Result<()> {
+        let has_scope: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tokens') WHERE name = 'scope_repo_id'",
+            [],
+            |row| row.get::<_, i64>(0).map(|count| count > 0),
+        )?;
+
+        if !has_scope {
+            conn.execute_batch(
+                "ALTER TABLE tokens ADD COLUMN scope_repo_id TEXT REFERENCES repos(id) ON DELETE CASCADE;
+                 ALTER TABLE tokens ADD COLUMN scope_bits INTEGER;",
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Returns a guard to the underlying database connection.
     /// This allows consuming applications to execute custom SQL.
     pub fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -53,6 +70,23 @@ fn format_datetime(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339()
 }
 
+const TOKEN_COLUMNS: &str = "id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at, scope_repo_id, scope_bits";
+
+fn row_to_token(row: &rusqlite::Row<'_>) -> rusqlite::Result<Token> {
+    Ok(Token {
+        id: row.get(0)?,
+        token_hash: row.get(1)?,
+        token_lookup: row.get(2)?,
+        is_admin: row.get(3)?,
+        principal_id: row.get(4)?,
+        created_at: parse_datetime(&row.get::<_, String>(5)?),
+        expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
+        last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
+        scope_repo_id: row.get(8)?,
+        scope: row.get::<_, Option<i64>>(9)?.map(Permission::from),
+    })
+}
+
 impl Store for SqliteStore {
     fn initialize(&self) -> Result<()> {
         self.initialize_with_extensions(&[])
@@ -61,6 +95,7 @@ impl Store for SqliteStore {
     fn initialize_with_extensions(&self, extensions: &[&str]) -> Result<()> {
         let conn = self.conn();
         conn.execute_batch(SCHEMA)?;
+        Self::migrate(&conn)?;
         for extension in extensions {
             conn.execute_batch(extension)?;
         }
@@ -202,7 +237,10 @@ impl Store for SqliteStore {
         .map_err(Error::from)
     }
 
-    fn get_principal_by_primary_namespace_id(&self, namespace_id: &str) -> Result<Option<Principal>> {
+    fn get_principal_by_primary_namespace_id(
+        &self,
+        namespace_id: &str,
+    ) -> Result<Option<Principal>> {
         let conn = self.conn();
         conn.query_row(
             "SELECT id, primary_namespace_id, created_at, updated_at
@@ -268,8 +306,8 @@ impl Store for SqliteStore {
 
     fn create_token(&self, token: &Token) -> Result<()> {
         let result = self.conn().execute(
-            "INSERT INTO tokens (id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO tokens (id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, scope_repo_id, scope_bits)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 token.id,
                 token.token_hash,
@@ -278,6 +316,8 @@ impl Store for SqliteStore {
                 token.principal_id,
                 format_datetime(&token.created_at),
                 token.expires_at.as_ref().map(format_datetime),
+                token.scope_repo_id,
+                token.scope.map(i64::from),
             ],
         );
 
@@ -295,21 +335,9 @@ impl Store for SqliteStore {
     fn get_token_by_id(&self, id: &str) -> Result<Option<Token>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
-             FROM tokens WHERE id = ?1",
+            &format!("SELECT {TOKEN_COLUMNS} FROM tokens WHERE id = ?1"),
             params![id],
-            |row| {
-                Ok(Token {
-                    id: row.get(0)?,
-                    token_hash: row.get(1)?,
-                    token_lookup: row.get(2)?,
-                    is_admin: row.get(3)?,
-                    principal_id: row.get(4)?,
-                    created_at: parse_datetime(&row.get::<_, String>(5)?),
-                    expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                    last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
-                })
-            },
+            row_to_token,
         )
         .optional()
         .map_err(Error::from)
@@ -318,21 +346,9 @@ impl Store for SqliteStore {
     fn get_token_by_lookup(&self, lookup: &str) -> Result<Option<Token>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
-             FROM tokens WHERE token_lookup = ?1",
+            &format!("SELECT {TOKEN_COLUMNS} FROM tokens WHERE token_lookup = ?1"),
             params![lookup],
-            |row| {
-                Ok(Token {
-                    id: row.get(0)?,
-                    token_hash: row.get(1)?,
-                    token_lookup: row.get(2)?,
-                    is_admin: row.get(3)?,
-                    principal_id: row.get(4)?,
-                    created_at: parse_datetime(&row.get::<_, String>(5)?),
-                    expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                    last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
-                })
-            },
+            row_to_token,
         )
         .optional()
         .map_err(Error::from)
@@ -340,23 +356,11 @@ impl Store for SqliteStore {
 
     fn list_tokens(&self, cursor: &str, limit: i32) -> Result<Vec<Token>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
-             FROM tokens WHERE id > ?1 ORDER BY id LIMIT ?2",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {TOKEN_COLUMNS} FROM tokens WHERE id > ?1 ORDER BY id LIMIT ?2"
+        ))?;
 
-        let rows = stmt.query_map(params![cursor, limit], |row| {
-            Ok(Token {
-                id: row.get(0)?,
-                token_hash: row.get(1)?,
-                token_lookup: row.get(2)?,
-                is_admin: row.get(3)?,
-                principal_id: row.get(4)?,
-                created_at: parse_datetime(&row.get::<_, String>(5)?),
-                expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
-            })
-        })?;
+        let rows = stmt.query_map(params![cursor, limit], row_to_token)?;
 
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Error::from)
@@ -364,23 +368,11 @@ impl Store for SqliteStore {
 
     fn list_principal_tokens(&self, principal_id: &str) -> Result<Vec<Token>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, token_hash, token_lookup, is_admin, principal_id, created_at, expires_at, last_used_at
-             FROM tokens WHERE principal_id = ?1 ORDER BY created_at DESC",
-        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {TOKEN_COLUMNS} FROM tokens WHERE principal_id = ?1 ORDER BY created_at DESC"
+        ))?;
 
-        let rows = stmt.query_map(params![principal_id], |row| {
-            Ok(Token {
-                id: row.get(0)?,
-                token_hash: row.get(1)?,
-                token_lookup: row.get(2)?,
-                is_admin: row.get(3)?,
-                principal_id: row.get(4)?,
-                created_at: parse_datetime(&row.get::<_, String>(5)?),
-                expires_at: row.get::<_, Option<String>>(6)?.map(|s| parse_datetime(&s)),
-                last_used_at: row.get::<_, Option<String>>(7)?.map(|s| parse_datetime(&s)),
-            })
-        })?;
+        let rows = stmt.query_map(params![principal_id], row_to_token)?;
 
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Error::from)
@@ -1229,7 +1221,11 @@ impl Store for SqliteStore {
             .map_err(Error::from)
     }
 
-    fn list_principal_repos_with_grants(&self, principal_id: &str, namespace_id: &str) -> Result<Vec<Repo>> {
+    fn list_principal_repos_with_grants(
+        &self,
+        principal_id: &str,
+        namespace_id: &str,
+    ) -> Result<Vec<Repo>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT r.id, r.namespace_id, r.name, r.description, r.public, r.folder_id, r.size_bytes, r.last_push_at, r.created_at, r.updated_at
@@ -1474,6 +1470,8 @@ mod tests {
             created_at: Utc::now(),
             expires_at: None,
             last_used_at: None,
+            scope_repo_id: None,
+            scope: None,
         };
         store.create_token(&token1).unwrap();
 
@@ -1486,6 +1484,8 @@ mod tests {
             created_at: Utc::now(),
             expires_at: None,
             last_used_at: None,
+            scope_repo_id: None,
+            scope: None,
         };
 
         let result = store.create_token(&token2);

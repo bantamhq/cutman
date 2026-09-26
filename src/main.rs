@@ -16,8 +16,9 @@ use cutman::cli::{
     run_credential_get, run_credential_store, run_folder_create, run_folder_delete,
     run_folder_list, run_folder_move, run_info, run_namespace_add, run_namespace_remove, run_new,
     run_permission_grant, run_permission_repo_grant, run_permission_repo_revoke,
-    run_permission_revoke, run_principal_add, run_principal_remove, run_repo_clone, run_repo_delete,
-    run_repo_move, run_repo_tag, run_tag_create, run_tag_delete, run_token_create, run_token_revoke,
+    run_permission_revoke, run_principal_add, run_principal_remove, run_repo_clone,
+    run_repo_delete, run_repo_move, run_repo_tag, run_tag_create, run_tag_delete, run_token_create,
+    run_token_revoke,
 };
 use cutman::config::{ServerConfig, ServerConfigOverrides};
 use cutman::server::{AppState, create_router};
@@ -39,6 +40,8 @@ fn create_token(
         created_at: Utc::now(),
         expires_at: None,
         last_used_at: None,
+        scope_repo_id: None,
+        scope: None,
     };
     Ok((token, raw_token))
 }
@@ -328,7 +331,13 @@ fn main() -> anyhow::Result<()> {
                     non_interactive,
                     yes,
                 } => {
-                    run_permission_revoke(data_dir, principal_id, namespace_id, non_interactive, yes)?;
+                    run_permission_revoke(
+                        data_dir,
+                        principal_id,
+                        namespace_id,
+                        non_interactive,
+                        yes,
+                    )?;
                 }
                 PermissionCommands::RepoGrant {
                     data_dir,
@@ -352,7 +361,13 @@ fn main() -> anyhow::Result<()> {
                     non_interactive,
                     yes,
                 } => {
-                    run_permission_repo_revoke(data_dir, principal_id, repo_id, non_interactive, yes)?;
+                    run_permission_repo_revoke(
+                        data_dir,
+                        principal_id,
+                        repo_id,
+                        non_interactive,
+                        yes,
+                    )?;
                 }
             },
             AdminCommands::Info { data_dir, json } => {
@@ -499,6 +514,7 @@ async fn run_server(config: ServerConfig) -> anyhow::Result<()> {
     }
 
     let store = SqliteStore::new(config.db_path())?;
+    store.initialize()?;
     if !store.has_admin_token()? {
         bail!(
             "Server not initialized. Run 'cutman admin init' first to create the database and admin token."

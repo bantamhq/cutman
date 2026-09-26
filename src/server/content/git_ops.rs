@@ -43,8 +43,9 @@ pub fn open_or_init_repo(path: &Path) -> Result<Repository, GitError> {
         Ok(repo) => Ok(repo),
         Err(_) => {
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| GitError::Internal(format!("Failed to create repo directory: {e}")))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    GitError::Internal(format!("Failed to create repo directory: {e}"))
+                })?;
             }
             let repo = Repository::init_bare(path)
                 .map_err(|e| GitError::Internal(format!("Failed to init repo: {e}")))?;

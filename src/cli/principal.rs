@@ -8,7 +8,9 @@ use crate::store::Store;
 use crate::types::{Namespace, Principal};
 
 use super::init_store;
-use super::pickers::{confirm_action, create_token_for_principal, get_or_pick_principal, pick_expiration};
+use super::pickers::{
+    confirm_action, create_token_for_principal, get_or_pick_principal, pick_expiration,
+};
 
 pub fn run_principal_add(
     data_dir: String,
@@ -90,7 +92,8 @@ pub fn run_principal_add(
         };
 
         let generator = TokenGenerator::new();
-        let (token, raw_token) = create_token_for_principal(&generator, Some(principal_id), expires_in)?;
+        let (token, raw_token) =
+            create_token_for_principal(&generator, Some(principal_id), expires_in)?;
         store.create_token(&token)?;
 
         println!();
@@ -111,7 +114,8 @@ pub fn run_principal_remove(
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
+    let (principal, username) = match get_or_pick_principal(&store, principal_id, non_interactive)?
+    {
         Some(result) => result,
         None => return Ok(()),
     };

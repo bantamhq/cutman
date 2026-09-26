@@ -16,7 +16,6 @@ use crate::types::{Permission, Principal, Repo, Token};
 
 pub struct OptionalAuth {
     pub principal: Option<Principal>,
-    #[allow(dead_code)]
     pub token: Option<Token>,
 }
 
@@ -115,7 +114,14 @@ pub fn check_content_access(
         .as_ref()
         .ok_or_else(|| ApiError::unauthorized("Authentication required"))?;
 
-    let has_read = check_repo_permission(state.store.as_ref(), principal, repo, Permission::REPO_READ)?;
+    if let Some(token) = &auth.token {
+        if !token.scope_allows(&repo.id, Permission::REPO_READ) {
+            return Err(ApiError::forbidden("Access denied"));
+        }
+    }
+
+    let has_read =
+        check_repo_permission(state.store.as_ref(), principal, repo, Permission::REPO_READ)?;
 
     if !has_read {
         return Err(ApiError::forbidden("Access denied"));

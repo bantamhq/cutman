@@ -17,10 +17,11 @@ pub fn run_token_create(
 ) -> anyhow::Result<()> {
     let store = init_store(&data_dir)?;
 
-    let (principal_id, username) = match get_or_pick_principal(&store, principal_id, non_interactive)? {
-        Some((principal, name)) => (Some(principal.id), name),
-        None => return Ok(()),
-    };
+    let (principal_id, username) =
+        match get_or_pick_principal(&store, principal_id, non_interactive)? {
+            Some((principal, name)) => (Some(principal.id), name),
+            None => return Ok(()),
+        };
 
     let expires_in = if let Some(days) = expires_days {
         if days <= 0 {
@@ -83,7 +84,7 @@ pub fn run_token_revoke(
     let confirmed = confirm_action(
         &format!(
             "Revoke token cutman_{}... for user '{}'?",
-            &token.token_lookup, user_label
+            token.token_lookup, user_label
         ),
         yes,
         non_interactive,

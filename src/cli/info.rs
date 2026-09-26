@@ -70,7 +70,10 @@ pub fn run_info(data_dir: String, json: bool) -> anyhow::Result<()> {
     let mut repo_count = 0;
 
     for ns in &namespaces {
-        if store.get_principal_by_primary_namespace_id(&ns.id)?.is_some() {
+        if store
+            .get_principal_by_primary_namespace_id(&ns.id)?
+            .is_some()
+        {
             primary_count += 1;
         }
         repo_count += store.list_repos(&ns.id, "", 10000)?.len() as i32;
@@ -94,7 +97,9 @@ pub fn run_info(data_dir: String, json: bool) -> anyhow::Result<()> {
 
         let mut namespace_outputs = Vec::with_capacity(namespaces.len());
         for ns in &namespaces {
-            let is_shared = store.get_principal_by_primary_namespace_id(&ns.id)?.is_none();
+            let is_shared = store
+                .get_principal_by_primary_namespace_id(&ns.id)?
+                .is_none();
             namespace_outputs.push(NamespaceOutput {
                 id: ns.id.clone(),
                 name: ns.name.clone(),

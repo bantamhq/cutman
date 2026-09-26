@@ -73,6 +73,15 @@ Cutman is designed to be trivially self-hostable.
 
 **On any VPS**: Single binary, SQLite database, minimal resources. No Docker required.
 
+**With Docker** (Dokploy, Coolify, etc.):
+```bash
+docker build -t cutman .
+docker run -d -p 8080:8080 -v cutman-data:/data \
+  -e CUTMAN_PUBLIC_BASE_URL=https://git.example.com cutman
+```
+
+The container initializes the server on first start and writes the admin token to `/data/.admin_token` (it's also printed to the logs once). Keep `/data` on a persistent volume: it holds the database and every repository. `CUTMAN_PORT` changes the port, and any `cutman` command can be run with `docker exec <container> cutman ...`.
+
 ## CLI Reference
 
 | Command | Description |
@@ -103,6 +112,19 @@ Admin commands (direct database access):
 ## API
 
 Cutman has a comprehensive REST API covering everything: repos, folders, tags, principals, namespaces, permissions, and git content browsing (commits, trees, blobs, blame, diffs).
+
+### Repo-scoped tokens
+
+For handing short-lived git access to an agent, CI job or sandbox, an admin can create a token limited to a single repository:
+
+```bash
+curl -X POST https://git.example.com/api/v1/admin/principals/$PRINCIPAL_ID/tokens \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"repo_id": "'$REPO_ID'", "allow": ["repo:write"], "expires_in_seconds": 3600}'
+```
+
+A scoped token only works for git operations and content reads on that repository, can never do more than its principal is allowed to, and is deleted along with the repository. Use it as the password in a git remote: `https://x-token:$TOKEN@git.example.com/git/<namespace>/<repo>`.
 
 See openapi.yaml for full documentation.
 

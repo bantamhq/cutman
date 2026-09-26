@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS tokens (
     -- Principal binding (required for non-admin tokens, NULL only for admin tokens)
     principal_id TEXT REFERENCES principals(id) ON DELETE CASCADE,
 
+    scope_repo_id TEXT REFERENCES repos(id) ON DELETE CASCADE,
+    scope_bits INTEGER,
+
     -- Lifecycle
     created_at TEXT DEFAULT (datetime('now')),
     expires_at TEXT,            -- NULL = never

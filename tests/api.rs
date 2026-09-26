@@ -71,7 +71,10 @@ async fn create_test_data(
         .json()
         .await
         .expect("parse principal response");
-    let principal_id = resp["data"]["id"].as_str().expect("principal id").to_string();
+    let principal_id = resp["data"]["id"]
+        .as_str()
+        .expect("principal id")
+        .to_string();
     let principal_ns_id = resp["data"]["primary_namespace_id"]
         .as_str()
         .expect("principal ns id")
@@ -232,6 +235,7 @@ async fn api_hurl_tests() {
         "admin/grants.hurl",
         "admin/namespaces.hurl",
         "admin/tokens.hurl",
+        "admin/scoped_tokens.hurl",
         "admin/principals.hurl",
         "user/namespaces.hurl",
         "user/repos.hurl",
